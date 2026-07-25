@@ -5,9 +5,11 @@ namespace BLL.Services.Interfaces.ReceivingOperations;
 public interface IReceivingOperationsService
 {
     Task GenerateStandardShiftsAsync(GenerateShiftsDto dto);
+    Task<GenerateYearShiftsResultDto> GenerateYearShiftsAsync(GenerateYearShiftsDto dto);
     Task<Guid> CreateTeamAsync(CreateReceivingTeamDto dto);
     Task<int> PlanShiftAsync(PlanReceivingShiftDto dto);
     Task<ReceivingDispatchBoardDto> GetDispatchBoardAsync();
+    Task<ManagerReceivingSetupDto> GetManagerSetupAsync();
     Task AssignRequestAsync(AssignDonationRequestDto dto);
     Task<List<ReceivingBatchDto>> GetMyBatchesAsync(Guid staffId);
     Task<ReceivingBatchDto?> GetMyBatchAsync(Guid staffId, Guid batchId);

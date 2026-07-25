@@ -16,6 +16,11 @@ public class ReceivingOperationsController(IReceivingOperationsService service) 
     public async Task<IActionResult> GenerateShifts(GenerateShiftsDto dto)
     { await service.GenerateStandardShiftsAsync(dto); return NoContent(); }
 
+    [HttpPost("year-shifts")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> GenerateYearShifts(GenerateYearShiftsDto dto)
+        => Ok(await service.GenerateYearShiftsAsync(dto));
+
     [HttpPost("teams")]
     [Authorize(Roles = "Manager")]
     public async Task<IActionResult> CreateTeam(CreateReceivingTeamDto dto)
@@ -29,6 +34,10 @@ public class ReceivingOperationsController(IReceivingOperationsService service) 
     [HttpGet("dispatch-board")]
     [Authorize(Roles = "Manager")]
     public async Task<IActionResult> DispatchBoard() => Ok(await service.GetDispatchBoardAsync());
+
+    [HttpGet("manager-setup")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> ManagerSetup() => Ok(await service.GetManagerSetupAsync());
 
     [HttpPost("assign-request")]
     [Authorize(Roles = "Manager")]

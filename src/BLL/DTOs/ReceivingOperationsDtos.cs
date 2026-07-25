@@ -1,6 +1,8 @@
 namespace BLL.DTOs;
 
 public record GenerateShiftsDto(Guid WarehouseId, DateTime Date);
+public record GenerateYearShiftsDto(Guid WarehouseId, int Year, List<DateTime>? HolidayDates);
+public record GenerateYearShiftsResultDto(int WorkingDays, int CreatedShifts, int SkippedExisting);
 public record CreateReceivingTeamDto(Guid ShiftId, string TeamName, List<Guid> StaffIds);
 public record PlanReceivingShiftDto(Guid ShiftId, Guid TeamId);
 public record AssignDonationRequestDto(Guid RequestId, Guid TeamId);
@@ -50,3 +52,13 @@ public record DispatchRequestDto(Guid Id, string Code, string ContactName, strin
 public record DispatchTeamDto(Guid Id, string TeamName, Guid ShiftId, string ShiftName,
     DateTime ShiftDate, string ShiftTime, Guid WarehouseId, List<ReceivingTeamMemberDto> Members);
 public record ReceivingDispatchBoardDto(List<DispatchRequestDto> Requests, List<DispatchTeamDto> Teams);
+public record ManagerWarehouseOptionDto(Guid Id, string Name, string Address);
+public record ManagerStaffOptionDto(Guid Id, string FullName, string UserName, string PhoneNumber);
+public record ManagerTeamOverviewDto(Guid Id, string TeamName, List<ReceivingTeamMemberDto> Members);
+public record ManagerShiftOverviewDto(Guid Id, Guid WarehouseId, string WarehouseName, string ShiftName,
+    DateTime ShiftDate, TimeSpan StartTime, TimeSpan EndTime, string Status,
+    ManagerTeamOverviewDto? Team, Guid? IntakeBatchId, string? IntakeBatchCode,
+    string? IntakeBatchStatus, string? IntakeBatchRoute, decimal IntakeBatchWeight,
+    int AssignedRequests);
+public record ManagerReceivingSetupDto(List<ManagerWarehouseOptionDto> Warehouses,
+    List<ManagerStaffOptionDto> ReceivingStaff, List<ManagerShiftOverviewDto> Shifts);

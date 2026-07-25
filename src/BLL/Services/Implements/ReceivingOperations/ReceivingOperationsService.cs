@@ -37,15 +37,95 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         await context.SaveChangesAsync();
     }
 
+    public async Task<GenerateYearShiftsResultDto> GenerateYearShiftsAsync(GenerateYearShiftsDto dto)
+    {
+        if (dto.Year is < 2020 or > 2100)
+            throw new InvalidOperationException("Year must be between 2020 and 2100.");
+        if (!await context.Warehouses.AnyAsync(x => x.Id == dto.WarehouseId && x.IsActive != false))
+            throw new InvalidOperationException("Warehouse not found.");
+
+        // Fixed-date Vietnamese public holidays. Lunar holidays such as Tet and Hung Kings
+        // are supplied by Manager for the selected year because their solar dates change.
+        var excludedDates = new HashSet<DateTime>
+        {
+            new(dto.Year, 1, 1),
+            new(dto.Year, 4, 30),
+            new(dto.Year, 5, 1),
+            new(dto.Year, 9, 2)
+        };
+        foreach (var holiday in dto.HolidayDates ?? [])
+        {
+            if (holiday.Year != dto.Year)
+                throw new InvalidOperationException("Every additional holiday must belong to the selected year.");
+            excludedDates.Add(holiday.Date);
+        }
+
+        var yearStart = new DateTime(dto.Year, 1, 1);
+        var yearEnd = new DateTime(dto.Year + 1, 1, 1);
+        var existing = await context.Shifts.AsNoTracking()
+            .Where(x => x.WarehouseId == dto.WarehouseId && x.ShiftDate >= yearStart
+                && x.ShiftDate < yearEnd && x.IsActive != false)
+            .Select(x => new { Date = x.ShiftDate.Date, x.StartTime })
+            .ToListAsync();
+        var existingKeys = existing.Select(x => (x.Date, x.StartTime)).ToHashSet();
+        var definitions = new[]
+        {
+            ("Ca sáng", new TimeSpan(8, 0, 0), new TimeSpan(11, 0, 0)),
+            ("Ca chiều", new TimeSpan(13, 0, 0), new TimeSpan(17, 0, 0))
+        };
+        var workingDays = 0;
+        var created = 0;
+        var skipped = 0;
+        for (var date = yearStart; date < yearEnd; date = date.AddDays(1))
+        {
+            if (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday
+                || excludedDates.Contains(date.Date))
+                continue;
+            workingDays++;
+            foreach (var definition in definitions)
+            {
+                if (existingKeys.Contains((date.Date, definition.Item2)))
+                {
+                    skipped++;
+                    continue;
+                }
+                context.Shifts.Add(new Shift
+                {
+                    Id = Guid.NewGuid(), WarehouseId = dto.WarehouseId, ShiftDate = date.Date,
+                    ShiftName = definition.Item1, StartTime = definition.Item2,
+                    EndTime = definition.Item3, Status = "Scheduled", CreateAt = DateTime.UtcNow
+                });
+                created++;
+            }
+        }
+        await context.SaveChangesAsync();
+        return new GenerateYearShiftsResultDto(workingDays, created, skipped);
+    }
+
     public async Task<Guid> CreateTeamAsync(CreateReceivingTeamDto dto)
     {
         if (dto.StaffIds.Distinct().Count() != 2)
             throw new InvalidOperationException("A receiving team must have exactly two different staff members.");
         var shift = await context.Shifts.FirstOrDefaultAsync(x => x.Id == dto.ShiftId && x.IsActive != false)
             ?? throw new InvalidOperationException("Shift not found.");
+        if (shift.Status != "Scheduled")
+            throw new InvalidOperationException("A team can only be created for a scheduled shift.");
+        if (await context.OperationalTeams.AnyAsync(x => x.ShiftId == shift.Id && x.IsActive != false))
+            throw new InvalidOperationException("This shift already has a receiving team.");
         var validStaff = await context.Users.Include(x => x.Role).CountAsync(x => dto.StaffIds.Contains(x.Id)
             && x.Role.RoleName == "ReceivingStaff" && x.IsActive != false);
         if (validStaff != 2) throw new InvalidOperationException("Both members must be active ReceivingStaff users.");
+        var overlappingStaff = await context.TeamMembers
+            .Where(x => dto.StaffIds.Contains(x.StaffId) && x.IsActive != false
+                && x.Team.IsActive != false && x.Team.Shift.IsActive != false
+                && x.Team.Shift.ShiftDate == shift.ShiftDate
+                && x.Team.Shift.Status != "Completed"
+                && x.Team.Shift.StartTime < shift.EndTime
+                && shift.StartTime < x.Team.Shift.EndTime)
+            .Select(x => x.Staff.FullName).Distinct().ToListAsync();
+        if (overlappingStaff.Count != 0)
+            throw new InvalidOperationException(
+                $"Staff already assigned to an overlapping shift: {string.Join(", ", overlappingStaff)}.");
 
         var team = new OperationalTeam
         {
@@ -153,6 +233,38 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
                     .Select(m => new ReceivingTeamMemberDto(m.StaffId, m.Staff.FullName, m.Staff.PhoneNumber)).ToList()))
             .ToListAsync();
         return new ReceivingDispatchBoardDto(requests, teams);
+    }
+
+    public async Task<ManagerReceivingSetupDto> GetManagerSetupAsync()
+    {
+        var warehouses = await context.Warehouses.AsNoTracking()
+            .Where(x => x.IsActive != false).OrderBy(x => x.WarehouseName)
+            .Select(x => new ManagerWarehouseOptionDto(x.Id, x.WarehouseName, x.Address)).ToListAsync();
+        var staff = await context.Users.AsNoTracking()
+            .Where(x => x.IsActive != false && x.Role.RoleName == "ReceivingStaff")
+            .OrderBy(x => x.FullName)
+            .Select(x => new ManagerStaffOptionDto(x.Id, x.FullName, x.UserName, x.PhoneNumber)).ToListAsync();
+        var shifts = await context.Shifts.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Include(x => x.Teams.Where(t => t.IsActive != false))
+                .ThenInclude(x => x.Members.Where(m => m.IsActive != false)).ThenInclude(x => x.Staff)
+            .Include(x => x.IntakeBatch)!.ThenInclude(x => x!.PickupAssignments)
+            .Where(x => x.IsActive != false)
+            .OrderByDescending(x => x.ShiftDate).ThenBy(x => x.StartTime)
+            .ToListAsync();
+        var shiftDtos = shifts.Select(x =>
+        {
+            var team = x.Teams.FirstOrDefault();
+            return new ManagerShiftOverviewDto(x.Id, x.WarehouseId, x.Warehouse.WarehouseName,
+                x.ShiftName, x.ShiftDate, x.StartTime, x.EndTime, x.Status,
+                team is null ? null : new ManagerTeamOverviewDto(team.Id, team.TeamName,
+                    team.Members.Select(m => new ReceivingTeamMemberDto(
+                        m.StaffId, m.Staff.FullName, m.Staff.PhoneNumber)).ToList()),
+                x.IntakeBatch?.Id, x.IntakeBatch?.BatchCode, x.IntakeBatch?.Status,
+                x.IntakeBatch?.RouteName, x.IntakeBatch?.TotalWeight ?? 0,
+                x.IntakeBatch?.PickupAssignments.Count(a => a.IsActive != false) ?? 0);
+        }).ToList();
+        return new ManagerReceivingSetupDto(warehouses, staff, shiftDtos);
     }
 
     public async Task AssignRequestAsync(AssignDonationRequestDto dto)
