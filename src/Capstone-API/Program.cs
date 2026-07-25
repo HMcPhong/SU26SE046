@@ -8,6 +8,8 @@ using BLL.Services.Interfaces.Common;
 using BLL.Services.Interfaces.DonorRequestService;
 using BLL.Services.Interfaces.WarehouseService;
 using BLL.Services.Interfaces.ReceivingOperations;
+using BLL.Services.Implements.ClassificationOperations;
+using BLL.Services.Interfaces.ClassificationOperations;
 using DAL;
 using DAL.Repository;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -28,6 +30,7 @@ builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IDonorRequestService, DonorRequestService>();
 builder.Services.AddScoped<IWarehouseService, WarehouseService>();
 builder.Services.AddScoped<IReceivingOperationsService, ReceivingOperationsService>();
+builder.Services.AddScoped<IClassificationOperationsService, ClassificationOperationsService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 

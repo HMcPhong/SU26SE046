@@ -76,9 +76,6 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             .Where(x => x.WarehouseId == shift.WarehouseId && x.IsActive != false
                 && x.Status == DonationRequestStatus.WaitingReceivingStaff
                 && x.PickupDate.HasValue && x.PickupDate.Value.Date <= shift.ShiftDate.Date
-                && (x.PickupDate.Value.Date < shift.ShiftDate.Date
-                    || (x.PickupDate.Value.TimeOfDay >= shift.StartTime
-                        && x.PickupDate.Value.TimeOfDay <= shift.EndTime))
                 && !alreadyPlanned.Contains(x.Id))
             .OrderBy(x => x.PickupDate)
             .ThenBy(x => x.PickupAddress)
@@ -247,6 +244,20 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         await context.SaveChangesAsync();
     }
 
+    public async Task SendToClassificationAsync(Guid staffId, Guid batchId)
+    {
+        var batch = await RequireMyBatch(staffId, batchId);
+        if (batch.Status != "Completed")
+            throw new InvalidOperationException("Only a completed intake batch can be sent to classification.");
+        if (!batch.IntakeBatchDonationRequests.Any())
+            throw new InvalidOperationException("The intake batch does not contain any received donation request.");
+        batch.Status = "SentToClassification";
+        batch.SentToClassificationAt = DateTime.UtcNow;
+        batch.UpdateAt = DateTime.UtcNow;
+        batch.UpdatedBy = staffId;
+        await context.SaveChangesAsync();
+    }
+
     private IQueryable<IntakeBatch> MyBatchQuery(Guid staffId) => context.IntakeBatches.AsNoTracking()
         .Include(x => x.ReceivingTeam!).ThenInclude(x => x.Shift)
         .Include(x => x.PickupAssignments.Where(a => a.IsActive != false)).ThenInclude(x => x.DonorRequest).ThenInclude(x => x.Donor)
@@ -256,6 +267,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         await context.IntakeBatches.Include(x => x.ReceivingTeam!).ThenInclude(x => x.Members)
             .Include(x => x.ReceivingTeam!).ThenInclude(x => x.Shift)
             .Include(x => x.PickupAssignments).ThenInclude(x => x.DonorRequest).ThenInclude(x => x.Donor)
+            .Include(x => x.IntakeBatchDonationRequests)
             .FirstOrDefaultAsync(x => x.Id == batchId && x.IsActive != false
                 && x.ReceivingTeam!.Members.Any(m => m.StaffId == staffId && m.IsActive != false))
         ?? throw new InvalidOperationException("Batch not found or is not assigned to this staff member.");

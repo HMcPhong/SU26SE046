@@ -149,6 +149,12 @@ namespace DAL
                 .HasForeignKey(x => x.ReceivingTeamId)
                 .OnDelete(DeleteBehavior.SetNull);
 
+            modelBuilder.Entity<IntakeBatch>()
+                .HasOne(x => x.ClassificationReceivedByStaff)
+                .WithMany()
+                .HasForeignKey(x => x.ClassificationReceivedByStaffId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             modelBuilder.Entity<TeamMember>()
                 .HasIndex(x => new { x.TeamId, x.StaffId })
                 .IsUnique();
@@ -168,6 +174,14 @@ namespace DAL
                 .WithMany()
                 .HasForeignKey(x => x.GroupId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ClassifiedBatch>()
+                .Property(x => x.GroupKey)
+                .HasMaxLength(450);
+
+            modelBuilder.Entity<ClassifiedBatch>()
+                .HasIndex(x => x.GroupKey)
+                .IsUnique();
 
             modelBuilder.Entity<ClassificationResult>()
                 .HasOne(x => x.Criteria)
@@ -192,6 +206,20 @@ namespace DAL
                 .WithMany(x => x.InspectionAnswers)
                 .HasForeignKey(x => x.ConditionAnswerId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<InspectionAnswer>()
+                .HasIndex(x => new { x.ClassifiedItemId, x.ConditionQuestionId })
+                .IsUnique();
+
+            modelBuilder.Entity<ClassifiedItem>()
+                .HasOne(x => x.ClassifiedByStaff)
+                .WithMany()
+                .HasForeignKey(x => x.ClassifiedByStaffId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ClassifiedItem>()
+                .HasIndex(x => x.ItemCode)
+                .IsUnique();
 
             modelBuilder.Entity<TransferRequest>()
                 .HasOne(x => x.FromArea)

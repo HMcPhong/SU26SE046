@@ -65,5 +65,10 @@ public class ReceivingOperationsController(IReceivingOperationsService service) 
     public async Task<IActionResult> Complete(Guid batchId)
     { await service.CompleteBatchAsync(CurrentUserId, batchId); return NoContent(); }
 
+    [HttpPost("my-batches/{batchId:guid}/send-to-classification")]
+    [Authorize(Roles = "ReceivingStaff")]
+    public async Task<IActionResult> SendToClassification(Guid batchId)
+    { await service.SendToClassificationAsync(CurrentUserId, batchId); return NoContent(); }
+
     private Guid CurrentUserId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }
