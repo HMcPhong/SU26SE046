@@ -8,6 +8,47 @@ namespace BLL.Services.Implements.WarehouseOperations;
 
 public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperationsService
 {
+    public async Task<WarehouseLayoutDto> GetLayoutAsync(Guid staffId)
+    {
+        var staffWarehouseId = await context.Users.AsNoTracking()
+            .Where(x => x.Id == staffId).Select(x => x.WarehouseId).FirstOrDefaultAsync();
+        var warehouse = staffWarehouseId.HasValue
+            ? await context.Warehouses.AsNoTracking().FirstOrDefaultAsync(x => x.Id == staffWarehouseId && x.IsActive != false)
+            : await context.Warehouses.AsNoTracking().FirstOrDefaultAsync(x => x.IsActive != false);
+        if (warehouse is null) throw new InvalidOperationException("Warehouse not found for this staff account.");
+        await EnsureDefaultLayoutAsync(warehouse.Id);
+
+        var areas = await context.WarehouseAreas.AsNoTracking()
+            .Where(x => x.WarehouseId == warehouse.Id && x.IsActive != false)
+            .OrderBy(x => x.AreaName).ToListAsync();
+        var groups = await context.AreaGroups.AsNoTracking()
+            .Where(x => areas.Select(a => a.Id).Contains(x.AreaId) && x.IsActive != false)
+            .OrderBy(x => x.GroupName).ToListAsync();
+        var locations = await context.StorageLocations.AsNoTracking()
+            .Where(x => x.WarehouseId == warehouse.Id && x.IsActive != false)
+            .OrderBy(x => x.AisleCode).ThenBy(x => x.RackCode).ThenBy(x => x.ShelfCode).ThenBy(x => x.BinCode)
+            .ToListAsync();
+        var inventoryStats = await context.Inventories.AsNoTracking()
+            .Where(x => x.WarehouseId == warehouse.Id && x.StorageLocationId.HasValue && x.IsActive != false)
+            .GroupBy(x => x.StorageLocationId!.Value)
+            .Select(x => new { LocationId = x.Key, Count = x.Count(), Quantity = x.Sum(i => i.Quantity) })
+            .ToDictionaryAsync(x => x.LocationId);
+
+        var areaDtos = areas.Select(area => new WarehouseAreaLayoutDto(
+            area.Id, area.AreaName, area.Description, area.CapacityKg, area.CurrentKg,
+            groups.Where(x => x.AreaId == area.Id).Select(x => new WarehouseGroupLayoutDto(
+                x.Id, x.GroupName, x.Description, x.CapacityKg, x.CurrentKg)).ToList(),
+            locations.Where(x => x.AreaId == area.Id).Select(x =>
+            {
+                inventoryStats.TryGetValue(x.Id, out var stats);
+                return new WarehouseLocationLayoutDto(x.Id, x.LocationCode, x.AisleCode, x.RackCode,
+                    x.ShelfCode, x.BinCode, x.PreferredGarmentGroup, x.PreferredProcessingDirection,
+                    x.CapacityKg, x.CurrentWeightKg, x.Status, stats?.Count ?? 0, stats?.Quantity ?? 0);
+            }).ToList())).ToList();
+        return new WarehouseLayoutDto(warehouse.Id, warehouse.WarehouseName, warehouse.Address,
+            warehouse.TotalCapacityKg, warehouse.CurrentWeight, areaDtos);
+    }
+
     public async Task<WarehouseDashboardDto> GetDashboardAsync()
     {
         var pending = await context.ClassifiedBatches.CountAsync(x => x.IsActive != false && x.Status == "PendingWarehouseReceipt");
@@ -19,6 +60,7 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         var current = warehouses.Sum(x => x.CurrentWeight);
         return new WarehouseDashboardDto(pending, putaway, stored,
             inventory.Sum(x => Math.Max(0, x.Quantity - x.ReservedQuantity)),
+            inventory.Count(x => Math.Max(0, x.Quantity - x.ReservedQuantity) > 0),
             inventory.Sum(x => Math.Max(0, x.TotalWeight - x.ReservedWeight)),
             capacity <= 0 ? 0 : Math.Round(current / capacity * 100, 2));
     }
@@ -68,6 +110,10 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         var inventory = new Inventory
         {
             Id = Guid.NewGuid(), WarehouseId = batch.WarehouseId, ClassifiedBatchId = batch.Id,
+            FabricTypeId = batch.FabricTypeId, GarmentGroupId = batch.GarmentGroupId,
+            ClothingTypeId = batch.ClothingTypeId, GenderId = batch.GenderId,
+            TargetUserId = batch.TargetUserId, SizeId = batch.SizeId,
+            ConditionGradeId = batch.ConditionGradeId,
             Sku = $"SKU-{batch.BatchCode}", FabricType = batch.FabricType,
             GarmentGroup = batch.GarmentGroup, ClothingType = batch.ClothingType,
             Gender = batch.Gender, TargetUser = batch.TargetUser, Size = batch.Size,

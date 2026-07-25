@@ -4,6 +4,7 @@ using DAL;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260725075113_AddDonationDeliveryMethodAndContact")]
+    partial class AddDonationDeliveryMethodAndContact
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -165,11 +168,6 @@ namespace DAL.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("Code")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("nvarchar(80)");
-
                     b.Property<DateTime?>("CreateAt")
                         .HasColumnType("datetime2");
 
@@ -191,18 +189,7 @@ namespace DAL.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<Guid?>("ParentId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<int>("SortOrder")
-                        .HasColumnType("int");
-
-                    b.Property<string>("Type")
-                        .IsRequired()
-                        .HasMaxLength(40)
-                        .HasColumnType("nvarchar(40)");
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("UpdateAt")
                         .HasColumnType("datetime2");
@@ -211,13 +198,6 @@ namespace DAL.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("Code")
-                        .IsUnique();
-
-                    b.HasIndex("Type", "ParentId", "Name")
-                        .IsUnique()
-                        .HasFilter("[ParentId] IS NOT NULL");
 
                     b.ToTable("Categories");
                 });
@@ -374,12 +354,6 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("ClothingTypeId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("ConditionGradeId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<int>("ConditionRating")
                         .HasColumnType("int");
 
@@ -399,22 +373,13 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("FabricTypeId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("GarmentGroup")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("GarmentGroupId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("Gender")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("GenderId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid?>("GroupId")
                         .HasColumnType("uniqueidentifier");
@@ -451,9 +416,6 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("SizeId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -467,9 +429,6 @@ namespace DAL.Migrations
                     b.Property<string>("TargetUser")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("TargetUserId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("TotalItem")
                         .HasColumnType("int");
@@ -540,12 +499,6 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("ClothingTypeId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("ConditionGradeId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<int>("ConditionRating")
                         .HasColumnType("int");
 
@@ -565,22 +518,13 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("FabricTypeId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("GarmentGroup")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("GarmentGroupId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("Gender")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("GenderId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.PrimitiveCollection<string>("ImageUrls")
                         .HasColumnType("nvarchar(max)");
@@ -606,9 +550,6 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("SizeId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -616,9 +557,6 @@ namespace DAL.Migrations
                     b.Property<string>("TargetUser")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("TargetUserId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("UpdateAt")
                         .HasColumnType("datetime2");
@@ -1147,12 +1085,6 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("ClothingTypeId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<Guid?>("ConditionGradeId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<int>("ConditionRating")
                         .HasColumnType("int");
 
@@ -1172,22 +1104,13 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("FabricTypeId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("GarmentGroup")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("GarmentGroupId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("Gender")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("GenderId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<bool?>("IsActive")
                         .HasColumnType("bit");
@@ -1213,9 +1136,6 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("SizeId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<string>("Sku")
                         .IsRequired()
                         .HasColumnType("nvarchar(450)");
@@ -1230,9 +1150,6 @@ namespace DAL.Migrations
                     b.Property<string>("TargetUser")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("TargetUserId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("TotalWeight")
                         .HasPrecision(18, 2)

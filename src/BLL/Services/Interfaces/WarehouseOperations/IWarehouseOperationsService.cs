@@ -5,6 +5,7 @@ namespace BLL.Services.Interfaces.WarehouseOperations;
 public interface IWarehouseOperationsService
 {
     Task<WarehouseDashboardDto> GetDashboardAsync();
+    Task<WarehouseLayoutDto> GetLayoutAsync(Guid staffId);
     Task<IReadOnlyList<WarehouseInboundBatchDto>> GetInboundBatchesAsync();
     Task<WarehouseInboundBatchDto?> GetBatchAsync(Guid batchId);
     Task ConfirmReceiptAsync(Guid staffId, Guid batchId, ConfirmWarehouseReceiptDto dto);

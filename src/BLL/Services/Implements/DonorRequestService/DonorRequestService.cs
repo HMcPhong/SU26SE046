@@ -33,26 +33,52 @@ namespace BLL.Services.Implements.DonorRequestService
                     "Warehouse not found");
             }
 
+            var deliveryMethod = dto.DeliveryMethod?.Trim() switch
+            {
+                "StaffPickup" => "StaffPickup",
+                "DonorDropOff" => "DonorDropOff",
+                _ => throw new InvalidOperationException("Delivery method must be StaffPickup or DonorDropOff.")
+            };
+            var contactName = dto.ContactName?.Trim();
+            var contactPhone = new string((dto.ContactPhoneNumber ?? string.Empty).Where(char.IsDigit).ToArray());
+            if (string.IsNullOrWhiteSpace(contactName))
+                throw new InvalidOperationException("Contact name is required.");
+            if (contactPhone.Length != 10 || contactPhone[0] != '0')
+                throw new InvalidOperationException("A valid 10-digit Vietnamese contact phone number is required.");
+            if (deliveryMethod == "StaffPickup" &&
+                (string.IsNullOrWhiteSpace(dto.PickupAddress) || !dto.PickupDate.HasValue))
+                throw new InvalidOperationException("Pickup address and pickup date are required for staff pickup.");
+
             var request =
                 new DonationRequest
                 {
                     Id = Guid.NewGuid(),
                     DonorId = donorId,
                     WarehouseId = dto.WarehouseId,
-                    PickupDate = DateTime.SpecifyKind(dto.PickupDate, DateTimeKind.Unspecified),
+                    ContactName = contactName,
+                    ContactPhoneNumber = contactPhone,
+                    DeliveryMethod = deliveryMethod,
+                    PickupDate = dto.PickupDate.HasValue
+                        ? DateTime.SpecifyKind(dto.PickupDate.Value, DateTimeKind.Unspecified)
+                        : null,
                     Description = dto.Description,
                     ImageUrls = dto.ImageUrls,
                     EstimateWeight = dto.EstimateWeight,
-                    PickupAddress = dto.PickupAddress,
+                    PickupAddress = deliveryMethod == "StaffPickup"
+                        ? dto.PickupAddress!.Trim()
+                        : warehouse.Address,
                     CreateAt = DateTime.UtcNow,
-                    Status = DonationRequestStatus.WaitingReceivingStaff
+                    Status = deliveryMethod == "StaffPickup"
+                        ? DonationRequestStatus.WaitingReceivingStaff
+                        : DonationRequestStatus.PendingStaffAssign
                 };
 
             await _unitOfWork
                 .DonorRequestRepository
                 .AddAsync(request);
 
-            await AssignToAvailableReceivingBatchAsync(request);
+            if (deliveryMethod == "StaffPickup")
+                await AssignToAvailableReceivingBatchAsync(request);
             await _unitOfWork.SaveChangeAsync();
         }
 
@@ -199,7 +225,7 @@ namespace BLL.Services.Implements.DonorRequestService
                 await _unitOfWork
                 .DonorRequestRepository
                 .GetAllAsync(
-                    x => x.Donor.PhoneNumber == normalizedPhoneNumber
+                    x => x.ContactPhoneNumber == normalizedPhoneNumber
                          && x.IsActive != false,
                     noTracked: true);
 
@@ -232,8 +258,9 @@ namespace BLL.Services.Implements.DonorRequestService
                 {
                     Id = x.Id,
                     Code = "DR-" + x.CreateAt.GetValueOrDefault().Year + "-" + x.Id.ToString().Substring(0, 8).ToUpper(),
-                    DonorName = x.Donor.FullName,
-                    PhoneNumber = x.Donor.PhoneNumber,
+                    DonorName = x.ContactName,
+                    PhoneNumber = x.ContactPhoneNumber,
+                    DeliveryMethod = x.DeliveryMethod,
                     Description = x.Description,
                     ImageUrls = x.ImageUrls,
                     EstimateWeight = x.EstimateWeight,
@@ -243,7 +270,10 @@ namespace BLL.Services.Implements.DonorRequestService
                     WarehouseId = x.WarehouseId,
                     WarehouseAddress = x.Warehouse.Address,
                     Status = x.Status.ToString(),
-                    StatusText = GetStatusText(x.Status),
+                    StatusText = x.DeliveryMethod == "DonorDropOff"
+                        && x.Status == DonationRequestStatus.PendingStaffAssign
+                            ? "Chờ người quyên góp mang hàng đến kho"
+                            : GetStatusText(x.Status),
                     CreatedAt = x.CreateAt,
                 });
         }

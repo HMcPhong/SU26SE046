@@ -75,6 +75,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         var candidates = await context.DonationRequests.Include(x => x.Donor)
             .Where(x => x.WarehouseId == shift.WarehouseId && x.IsActive != false
                 && x.Status == DonationRequestStatus.WaitingReceivingStaff
+                && x.DeliveryMethod == "StaffPickup"
                 && x.PickupDate.HasValue && x.PickupDate.Value.Date <= shift.ShiftDate.Date
                 && !alreadyPlanned.Contains(x.Id))
             .OrderBy(x => x.PickupDate)
@@ -120,6 +121,83 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         }
         await context.SaveChangesAsync();
         return planned;
+    }
+
+    public async Task<ReceivingDispatchBoardDto> GetDispatchBoardAsync()
+    {
+        var assignedIds = context.PickupAssignments.Where(x => x.IsActive != false)
+            .Select(x => x.DonorRequestId);
+        var requests = await context.DonationRequests.AsNoTracking()
+            .Include(x => x.Warehouse)
+            .Where(x => x.IsActive != false
+                && (x.Status == DonationRequestStatus.WaitingReceivingStaff
+                    || x.Status == DonationRequestStatus.PendingStaffAssign)
+                && !assignedIds.Contains(x.Id))
+            .OrderBy(x => x.PickupDate).ThenBy(x => x.CreateAt)
+            .Select(x => new DispatchRequestDto(
+                x.Id, $"DR-{x.CreateAt!.Value.Year}-{x.Id.ToString().Substring(0, 8).ToUpper()}",
+                x.ContactName, x.ContactPhoneNumber, x.DeliveryMethod, x.PickupAddress,
+                x.PickupDate, x.WarehouseId, x.Warehouse.WarehouseName))
+            .ToListAsync();
+
+        var teams = await context.OperationalTeams.AsNoTracking()
+            .Include(x => x.Shift)
+            .Include(x => x.Members).ThenInclude(x => x.Staff)
+            .Where(x => x.IsActive != false && x.TeamType == "Receiving"
+                && x.Shift.IsActive != false && x.Shift.Status != "Completed")
+            .OrderBy(x => x.Shift.ShiftDate).ThenBy(x => x.Shift.StartTime)
+            .Select(x => new DispatchTeamDto(
+                x.Id, x.TeamName, x.ShiftId, x.Shift.ShiftName, x.Shift.ShiftDate,
+                $"{x.Shift.StartTime:hh\\:mm} - {x.Shift.EndTime:hh\\:mm}", x.Shift.WarehouseId,
+                x.Members.Where(m => m.IsActive != false)
+                    .Select(m => new ReceivingTeamMemberDto(m.StaffId, m.Staff.FullName, m.Staff.PhoneNumber)).ToList()))
+            .ToListAsync();
+        return new ReceivingDispatchBoardDto(requests, teams);
+    }
+
+    public async Task AssignRequestAsync(AssignDonationRequestDto dto)
+    {
+        var request = await context.DonationRequests.Include(x => x.Warehouse)
+            .FirstOrDefaultAsync(x => x.Id == dto.RequestId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Donation request not found.");
+        if (await context.PickupAssignments.AnyAsync(x => x.DonorRequestId == dto.RequestId && x.IsActive != false))
+            throw new InvalidOperationException("Donation request is already assigned.");
+        var team = await context.OperationalTeams.Include(x => x.Shift).Include(x => x.Members)
+            .FirstOrDefaultAsync(x => x.Id == dto.TeamId && x.IsActive != false && x.TeamType == "Receiving")
+            ?? throw new InvalidOperationException("Receiving team not found.");
+        if (team.Members.Count(x => x.IsActive != false) != 2)
+            throw new InvalidOperationException("Receiving team must contain exactly two members.");
+        if (team.Shift.WarehouseId != request.WarehouseId)
+            throw new InvalidOperationException("The team and donation request must belong to the same warehouse.");
+
+        var batch = await context.IntakeBatches.FirstOrDefaultAsync(x => x.ShiftId == team.ShiftId && x.IsActive != false);
+        if (batch is null)
+        {
+            batch = new IntakeBatch
+            {
+                Id = Guid.NewGuid(), WarehouseId = request.WarehouseId, ShiftId = team.ShiftId,
+                ReceivingTeamId = team.Id, IntakeDate = team.Shift.ShiftDate.Date.Add(team.Shift.StartTime),
+                BatchCode = $"INT-{team.Shift.ShiftDate:yyyyMMdd}-{Guid.NewGuid():N}"[..22].ToUpperInvariant(),
+                RouteName = request.DeliveryMethod == "DonorDropOff" ? "Nhận trực tiếp tại kho" : ExtractArea(request.PickupAddress),
+                Status = "Planned", CreateAt = DateTime.UtcNow
+            };
+            context.IntakeBatches.Add(batch);
+        }
+        else if (batch.ReceivingTeamId != team.Id)
+            throw new InvalidOperationException("This shift already belongs to another receiving team.");
+
+        var order = await context.PickupAssignments.Where(x => x.IntakeBatchId == batch.Id && x.IsActive != false)
+            .Select(x => (int?)x.RouteOrder).MaxAsync() ?? 0;
+        context.PickupAssignments.Add(new PickupAssignment
+        {
+            Id = Guid.NewGuid(), DonorRequestId = request.Id, ShiftId = team.ShiftId, TeamId = team.Id,
+            IntakeBatchId = batch.Id, RouteOrder = order + 1,
+            AreaKey = request.DeliveryMethod == "DonorDropOff" ? "Tại kho" : ExtractArea(request.PickupAddress),
+            Status = "Pending", CreateAt = DateTime.UtcNow
+        });
+        request.Status = DonationRequestStatus.ReceivingStaffAssigned;
+        request.UpdateAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
     }
 
     public async Task<List<ReceivingBatchDto>> GetMyBatchesAsync(Guid staffId)
@@ -259,12 +337,15 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
     }
 
     private IQueryable<IntakeBatch> MyBatchQuery(Guid staffId) => context.IntakeBatches.AsNoTracking()
+        .Include(x => x.Warehouse)
         .Include(x => x.ReceivingTeam!).ThenInclude(x => x.Shift)
+        .Include(x => x.ReceivingTeam!).ThenInclude(x => x.Members).ThenInclude(x => x.Staff)
         .Include(x => x.PickupAssignments.Where(a => a.IsActive != false)).ThenInclude(x => x.DonorRequest).ThenInclude(x => x.Donor)
         .Where(x => x.IsActive != false && x.ReceivingTeam!.Members.Any(m => m.StaffId == staffId && m.IsActive != false));
 
     private async Task<IntakeBatch> RequireMyBatch(Guid staffId, Guid batchId) =>
-        await context.IntakeBatches.Include(x => x.ReceivingTeam!).ThenInclude(x => x.Members)
+        await context.IntakeBatches.Include(x => x.Warehouse)
+            .Include(x => x.ReceivingTeam!).ThenInclude(x => x.Members).ThenInclude(x => x.Staff)
             .Include(x => x.ReceivingTeam!).ThenInclude(x => x.Shift)
             .Include(x => x.PickupAssignments).ThenInclude(x => x.DonorRequest).ThenInclude(x => x.Donor)
             .Include(x => x.IntakeBatchDonationRequests)
@@ -294,14 +375,19 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         ShiftName = batch.ReceivingTeam?.Shift.ShiftName ?? string.Empty,
         StartTime = batch.ReceivingTeam?.Shift.StartTime ?? default, EndTime = batch.ReceivingTeam?.Shift.EndTime ?? default,
         Status = batch.Status,
+        TeamName = batch.ReceivingTeam?.TeamName ?? string.Empty,
+        WarehouseAddress = batch.Warehouse?.Address ?? string.Empty,
+        TeamMembers = batch.ReceivingTeam?.Members.Where(x => x.IsActive != false)
+            .Select(x => new ReceivingTeamMemberDto(x.StaffId, x.Staff.FullName, x.Staff.PhoneNumber)).ToList() ?? [],
         Requests = batch.PickupAssignments.OrderBy(x => x.RouteOrder).Select(x => new ReceivingRequestDto
         {
             Id = x.DonorRequestId, BatchId = batch.Id,
             Code = $"DR-{x.DonorRequest.CreateAt?.Year}-{x.DonorRequestId.ToString()[..8].ToUpperInvariant()}",
-            DonorName = x.DonorRequest.Donor.FullName, PhoneNumber = x.DonorRequest.Donor.PhoneNumber,
+            DonorName = x.DonorRequest.ContactName, PhoneNumber = x.DonorRequest.ContactPhoneNumber,
             PickupAddress = x.DonorRequest.PickupAddress, Description = x.DonorRequest.Description ?? string.Empty,
             EstimateWeight = x.DonorRequest.EstimateWeight, ActualWeight = x.DonorRequest.ActualWeight,
             PickupDate = x.DonorRequest.PickupDate, Status = x.Status, Notes = x.Notes,
+            DeliveryMethod = x.DonorRequest.DeliveryMethod,
             ImageUrls = x.DonorRequest.ImageUrls
         }).ToList()
     };

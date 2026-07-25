@@ -14,6 +14,8 @@ namespace DAL.Models
         public string UserName { get; set; } = string.Empty;
         public string Address { get; set; } = string.Empty;
         public string UserStatus { get; set; } = string.Empty;
+        public bool EmailConfirmed { get; set; }
+        public bool PhoneNumberConfirmed { get; set; }
         public string? DonationPoint { get; set; }
         // Navigation
         public virtual Role Role { get; set; } = null!;
@@ -22,5 +24,7 @@ namespace DAL.Models
             = new List<Cart>();
         public virtual ICollection<DonationRequest> DonationRequests { get; set; }
             = new List<DonationRequest>();
+        public virtual ICollection<UserVerificationCode> VerificationCodes { get; set; }
+            = new List<UserVerificationCode>();
     }
 }

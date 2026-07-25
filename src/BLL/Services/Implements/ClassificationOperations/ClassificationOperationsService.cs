@@ -8,12 +8,13 @@ namespace BLL.Services.Implements.ClassificationOperations;
 
 public class ClassificationOperationsService(AppDbContext context) : IClassificationOperationsService
 {
-    private static readonly string[] Fabrics = ["Vải cotton", "Vải lanh", "Vải lụa", "Vải len", "Vải nylon", "Vải dù", "Da", "Vải jean"];
-    private static readonly Dictionary<string, IReadOnlyList<string>> Clothes = new()
-    {
-        ["Áo"] = ["Áo phông tay ngắn", "Áo phông tay dài", "Áo ba lỗ", "Áo sơ mi tay ngắn", "Áo sơ mi tay dài", "Áo khoác", "Áo vest", "Áo blazer", "Áo sweater", "Áo polo", "Áo dài"],
-        ["Quần"] = ["Quần tây", "Quần ngắn", "Quần kaki", "Quần dài", "Quần ống rộng", "Váy"]
-    };
+    private const string FabricType = "FabricType";
+    private const string GarmentGroup = "GarmentGroup";
+    private const string ClothingType = "ClothingType";
+    private const string Gender = "Gender";
+    private const string TargetUser = "TargetUser";
+    private const string Size = "Size";
+    private const string ConditionGrade = "ConditionGrade";
 
     public async Task<IReadOnlyList<ClassificationBatchSummaryDto>> GetBatchesAsync() =>
         await context.IntakeBatches.AsNoTracking()
@@ -36,11 +37,18 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
 
     public async Task<ClassificationCatalogDto> GetCatalogAsync()
     {
+        var categories = await context.Categories.AsNoTracking()
+            .Where(x => x.IsActive != false)
+            .OrderBy(x => x.SortOrder).ThenBy(x => x.Name)
+            .ToListAsync();
+        IReadOnlyList<CategoryOptionDto> OfType(string type) => categories
+            .Where(x => x.Type == type)
+            .Select(x => new CategoryOptionDto(x.Id, x.Code, x.Name, x.ParentId, x.SortOrder))
+            .ToList();
         var questions = await context.ConditionQuestions.AsNoTracking().Where(x => x.IsActive != false)
             .Include(x => x.Answers.Where(a => a.IsActive != false)).OrderBy(x => x.DisplayOrder).ToListAsync();
-        return new ClassificationCatalogDto(Fabrics, Clothes,
-            ["Nam", "Nữ", "Unisex"], ["Em bé", "Trẻ em", "Người lớn"],
-            ["S", "M", "L", "XL", "XXL", "XXXL", "Freesize"],
+        return new ClassificationCatalogDto(OfType(FabricType), OfType(GarmentGroup),
+            OfType(ClothingType), OfType(Gender), OfType(TargetUser), OfType(Size), OfType(ConditionGrade),
             questions.Select(q => new ClassificationQuestionDto(q.Id, q.QuestionText, q.DisplayOrder,
                 q.Answers.OrderBy(a => a.ConditionRating).Select(a => new ClassificationOptionDto(
                     a.Id, a.AnswerText, Grade(a.ConditionRating))).ToList())).ToList());
@@ -73,7 +81,7 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
     {
         var batch = await RequireBatch(batchId);
         if (batch.Status != "Classifying") throw new InvalidOperationException("Start the batch before classifying items.");
-        ValidateAttributes(dto);
+        var categorySelection = await ResolveCategoriesAsync(dto);
         var questions = await context.ConditionQuestions.Include(x => x.Answers)
             .Where(x => x.IsActive != false).OrderBy(x => x.DisplayOrder).ToListAsync();
         if (dto.Answers.Count != questions.Count || dto.Answers.Select(x => x.QuestionId).Distinct().Count() != questions.Count)
@@ -87,11 +95,18 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
             ratings.Add(answer.ConditionRating);
         }
         var rating = ratings.Contains(3) ? 3 : ratings.Count(x => x == 2) >= 2 ? 2 : 1;
+        var grade = await context.Categories.FirstOrDefaultAsync(x => x.Type == ConditionGrade
+            && x.Code == $"GRADE_{Grade(rating)}" && x.IsActive != false)
+            ?? throw new InvalidOperationException("The condition grade category is not configured.");
         var item = new ClassifiedItem
         {
             Id = Guid.NewGuid(), BatchId = batchId, ItemCode = $"CI-{DateTime.UtcNow:yyyyMMdd}-{Guid.NewGuid():N}"[..20].ToUpperInvariant(),
-            FabricType = dto.FabricType, GarmentGroup = dto.GarmentGroup, ClothingType = dto.ClothingType,
-            Gender = dto.Gender, TargetUser = dto.TargetUser, Size = dto.Size, ConditionRating = rating,
+            FabricTypeId = categorySelection.Fabric.Id, GarmentGroupId = categorySelection.Group.Id,
+            ClothingTypeId = categorySelection.Clothing.Id, GenderId = categorySelection.Gender.Id,
+            TargetUserId = categorySelection.Target.Id, SizeId = categorySelection.Size.Id, ConditionGradeId = grade.Id,
+            FabricType = categorySelection.Fabric.Name, GarmentGroup = categorySelection.Group.Name,
+            ClothingType = categorySelection.Clothing.Name, Gender = categorySelection.Gender.Name,
+            TargetUser = categorySelection.Target.Name, Size = categorySelection.Size.Name, ConditionRating = rating,
             ProcessingDirection = rating == 1 ? "Charity" : rating == 2 ? "Recycling" : "Disposal",
             ImageUrls = dto.ImageUrls, Notes = dto.Notes, ClassifiedByStaffId = staffId, ClassifiedAt = DateTime.UtcNow,
             CreateAt = DateTime.UtcNow, CreatedBy = staffId
@@ -173,16 +188,17 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
     {
         var localDate = DateTime.UtcNow.AddHours(7).Date;
         var key = string.Join('|', intakeBatch.WarehouseId, localDate.ToString("yyyyMMdd"),
-            item.ConditionRating, item.FabricType.Trim().ToLowerInvariant(),
-            item.GarmentGroup.Trim().ToLowerInvariant(), item.ClothingType.Trim().ToLowerInvariant(),
-            item.Gender.Trim().ToLowerInvariant(), item.TargetUser.Trim().ToLowerInvariant(),
-            item.Size.Trim().ToLowerInvariant(), item.ProcessingDirection.ToLowerInvariant());
+            item.ConditionGradeId, item.FabricTypeId, item.GarmentGroupId, item.ClothingTypeId,
+            item.GenderId, item.TargetUserId, item.SizeId, item.ProcessingDirection.ToLowerInvariant());
         var group = await context.ClassifiedBatches.FirstOrDefaultAsync(x => x.GroupKey == key && x.IsActive != false);
         if (group is not null) return group;
         group = new ClassifiedBatch
         {
             Id = Guid.NewGuid(), WarehouseId = intakeBatch.WarehouseId, ClassificationDate = localDate,
             GroupKey = key, BatchCode = $"CB-{localDate:yyyyMMdd}-{Grade(item.ConditionRating)}-{Guid.NewGuid():N}"[..24].ToUpperInvariant(),
+            FabricTypeId = item.FabricTypeId, GarmentGroupId = item.GarmentGroupId,
+            ClothingTypeId = item.ClothingTypeId, GenderId = item.GenderId,
+            TargetUserId = item.TargetUserId, SizeId = item.SizeId, ConditionGradeId = item.ConditionGradeId,
             FabricType = item.FabricType, GarmentGroup = item.GarmentGroup, ClothingType = item.ClothingType,
             Gender = item.Gender, TargetUser = item.TargetUser, Size = item.Size,
             ConditionRating = item.ConditionRating, ProcessingDirection = item.ProcessingDirection,
@@ -193,14 +209,25 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
         return group;
     }
 
-    private static void ValidateAttributes(ClassifyItemDto dto)
+    private async Task<CategorySelection> ResolveCategoriesAsync(ClassifyItemDto dto)
     {
-        if (!Fabrics.Contains(dto.FabricType) || !Clothes.TryGetValue(dto.GarmentGroup, out var types)
-            || !types.Contains(dto.ClothingType) || !new[] { "Nam", "Nữ", "Unisex" }.Contains(dto.Gender)
-            || !new[] { "Em bé", "Trẻ em", "Người lớn" }.Contains(dto.TargetUser)
-            || !new[] { "S", "M", "L", "XL", "XXL", "XXXL", "Freesize" }.Contains(dto.Size))
-            throw new InvalidOperationException("One or more item attributes are invalid.");
+        var ids = new[] { dto.FabricTypeId, dto.GarmentGroupId, dto.ClothingTypeId,
+            dto.GenderId, dto.TargetUserId, dto.SizeId };
+        if (ids.Any(x => x == Guid.Empty) || ids.Distinct().Count() != ids.Length)
+            throw new InvalidOperationException("Every classification category must be selected.");
+        var values = await context.Categories.Where(x => ids.Contains(x.Id) && x.IsActive != false).ToListAsync();
+        Category Require(Guid id, string type) => values.FirstOrDefault(x => x.Id == id && x.Type == type)
+            ?? throw new InvalidOperationException($"The selected {type} category is invalid or inactive.");
+        var result = new CategorySelection(Require(dto.FabricTypeId, FabricType),
+            Require(dto.GarmentGroupId, GarmentGroup), Require(dto.ClothingTypeId, ClothingType),
+            Require(dto.GenderId, Gender), Require(dto.TargetUserId, TargetUser), Require(dto.SizeId, Size));
+        if (result.Clothing.ParentId != result.Group.Id)
+            throw new InvalidOperationException("The clothing type does not belong to the selected garment group.");
+        return result;
     }
+
+    private sealed record CategorySelection(Category Fabric, Category Group, Category Clothing,
+        Category Gender, Category Target, Category Size);
 
     private static string NormalizeStatus(string status) => status switch
     { "SentToClassification" => "PendingConfirmation", _ => status };

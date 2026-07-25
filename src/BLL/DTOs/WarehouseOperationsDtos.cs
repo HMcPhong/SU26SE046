@@ -1,7 +1,19 @@
 namespace BLL.DTOs;
 
 public record WarehouseDashboardDto(int PendingReceipt, int AwaitingPutaway, int StoredBatches,
-    int AvailableQuantity, decimal AvailableWeightKg, decimal CapacityUsedPercent);
+    int AvailableQuantity, int InventorySkuCount, decimal AvailableWeightKg, decimal CapacityUsedPercent);
+
+public record WarehouseLayoutDto(Guid WarehouseId, string WarehouseName, string Address,
+    decimal CapacityKg, decimal CurrentWeightKg, IReadOnlyList<WarehouseAreaLayoutDto> Areas);
+public record WarehouseAreaLayoutDto(Guid Id, string AreaName, string? Description,
+    decimal CapacityKg, decimal CurrentWeightKg, IReadOnlyList<WarehouseGroupLayoutDto> Groups,
+    IReadOnlyList<WarehouseLocationLayoutDto> Locations);
+public record WarehouseGroupLayoutDto(Guid Id, string GroupName, string? Description,
+    decimal CapacityKg, decimal CurrentWeightKg);
+public record WarehouseLocationLayoutDto(Guid Id, string LocationCode, string AisleCode,
+    string RackCode, string ShelfCode, string BinCode, string? PreferredGarmentGroup,
+    string? PreferredProcessingDirection, decimal CapacityKg, decimal CurrentWeightKg,
+    string Status, int InventoryCount, int ItemQuantity);
 
 public record WarehouseInboundBatchDto(Guid Id, string BatchCode, DateTime ClassificationDate,
     string FabricType, string GarmentGroup, string ClothingType, string Gender, string TargetUser,

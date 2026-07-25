@@ -26,6 +26,15 @@ public class ReceivingOperationsController(IReceivingOperationsService service) 
     public async Task<IActionResult> Plan(PlanReceivingShiftDto dto)
     { var count = await service.PlanShiftAsync(dto); return Ok(new { plannedRequests = count }); }
 
+    [HttpGet("dispatch-board")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> DispatchBoard() => Ok(await service.GetDispatchBoardAsync());
+
+    [HttpPost("assign-request")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> AssignRequest(AssignDonationRequestDto dto)
+    { await service.AssignRequestAsync(dto); return NoContent(); }
+
     [HttpGet("my-batches")]
     [Authorize(Roles = "ReceivingStaff")]
     public async Task<IActionResult> MyBatches() => Ok(await service.GetMyBatchesAsync(CurrentUserId));

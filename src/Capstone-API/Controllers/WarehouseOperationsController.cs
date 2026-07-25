@@ -14,6 +14,9 @@ public class WarehouseOperationsController(IWarehouseOperationsService service) 
     [HttpGet("dashboard")]
     public async Task<IActionResult> Dashboard() => Ok(await service.GetDashboardAsync());
 
+    [HttpGet("layout")]
+    public async Task<IActionResult> Layout() => Ok(await service.GetLayoutAsync(CurrentUserId));
+
     [HttpGet("inbound-batches")]
     public async Task<IActionResult> InboundBatches() => Ok(await service.GetInboundBatchesAsync());
 

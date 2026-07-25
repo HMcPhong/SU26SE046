@@ -8,6 +8,13 @@ public class ClassifiedBatch : BaseEntity
     public Guid? ProfileId { get; set; }
     public Guid? GroupId { get; set; }
     public Guid? AreaId { get; set; }
+    public Guid? FabricTypeId { get; set; }
+    public Guid? GarmentGroupId { get; set; }
+    public Guid? ClothingTypeId { get; set; }
+    public Guid? GenderId { get; set; }
+    public Guid? TargetUserId { get; set; }
+    public Guid? SizeId { get; set; }
+    public Guid? ConditionGradeId { get; set; }
     public int ConditionRating { get; set; }
     public DateTime ClassificationDate { get; set; }
     public string GroupKey { get; set; } = string.Empty;

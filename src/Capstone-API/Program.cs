@@ -29,6 +29,8 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped(typeof(ICrudService<>), typeof(CrudService<>));
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IEmailVerificationSender, EmailVerificationSender>();
+builder.Services.AddHttpClient<ISmsVerificationSender, SmsVerificationSender>();
 builder.Services.AddScoped<IDonorRequestService, DonorRequestService>();
 builder.Services.AddScoped<IWarehouseService, WarehouseService>();
 builder.Services.AddScoped<IReceivingOperationsService, ReceivingOperationsService>();

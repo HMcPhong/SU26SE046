@@ -7,6 +7,7 @@ namespace DAL
     {
         public DbSet<Role> Roles => Set<Role>();
         public DbSet<User> Users => Set<User>();
+        public DbSet<UserVerificationCode> UserVerificationCodes => Set<UserVerificationCode>();
         public DbSet<Cart> Carts => Set<Cart>();
         public DbSet<CartItem> CartItems => Set<CartItem>();
         public DbSet<Category> Categories => Set<Category>();
@@ -50,6 +51,21 @@ namespace DAL
             base.OnModelCreating(modelBuilder);
 
             modelBuilder.Entity<User>().HasOne(u => u.Role).WithMany(r => r.Users).HasForeignKey(u => u.RoleId);
+            modelBuilder.Entity<User>().HasIndex(x => x.UserName);
+            modelBuilder.Entity<User>().HasIndex(x => x.Email);
+            modelBuilder.Entity<User>().HasIndex(x => x.PhoneNumber);
+            modelBuilder.Entity<UserVerificationCode>()
+                .HasIndex(x => new { x.UserId, x.Channel, x.IsActive });
+            modelBuilder.Entity<UserVerificationCode>()
+                .HasOne(x => x.User)
+                .WithMany(x => x.VerificationCodes)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Category>().HasIndex(x => x.Code).IsUnique();
+            modelBuilder.Entity<Category>().HasIndex(x => new { x.Type, x.ParentId, x.Name }).IsUnique();
+            modelBuilder.Entity<Category>().Property(x => x.Code).HasMaxLength(80);
+            modelBuilder.Entity<Category>().Property(x => x.Type).HasMaxLength(40);
 
             modelBuilder.Entity<Role>().HasData(
                 new Role
@@ -115,6 +131,8 @@ namespace DAL
                     PasswordHash = "$2a$11$TCC0aSnsg3xBXrySfOn18OsY5Bme6jTvPnd6kVhAfR/XJIFODASVa",
                     RoleId = RoleSeedData.ReceivingStaffId,
                     UserStatus = "Active",
+                    EmailConfirmed = true,
+                    PhoneNumberConfirmed = true,
                     IsActive = true,
                     CreateAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
                 }

@@ -15,12 +15,12 @@ public record ClassificationAnswerDto(Guid QuestionId, Guid AnswerId);
 
 public class ClassifyItemDto
 {
-    public string FabricType { get; set; } = string.Empty;
-    public string GarmentGroup { get; set; } = string.Empty;
-    public string ClothingType { get; set; } = string.Empty;
-    public string Gender { get; set; } = string.Empty;
-    public string TargetUser { get; set; } = string.Empty;
-    public string Size { get; set; } = string.Empty;
+    public Guid FabricTypeId { get; set; }
+    public Guid GarmentGroupId { get; set; }
+    public Guid ClothingTypeId { get; set; }
+    public Guid GenderId { get; set; }
+    public Guid TargetUserId { get; set; }
+    public Guid SizeId { get; set; }
     public List<string> ImageUrls { get; set; } = [];
     public string? Notes { get; set; }
     public List<ClassificationAnswerDto> Answers { get; set; } = [];
@@ -29,10 +29,12 @@ public class ClassifyItemDto
 public record ClassificationOptionDto(Guid Id, string Text, string Grade);
 public record ClassificationQuestionDto(Guid Id, string Text, int DisplayOrder,
     IReadOnlyList<ClassificationOptionDto> Options);
-public record ClassificationCatalogDto(IReadOnlyList<string> FabricTypes,
-    IReadOnlyDictionary<string, IReadOnlyList<string>> ClothingTypes,
-    IReadOnlyList<string> Genders, IReadOnlyList<string> TargetUsers,
-    IReadOnlyList<string> Sizes, IReadOnlyList<ClassificationQuestionDto> ConditionQuestions);
+public record CategoryOptionDto(Guid Id, string Code, string Name, Guid? ParentId, int SortOrder);
+public record ClassificationCatalogDto(IReadOnlyList<CategoryOptionDto> FabricTypes,
+    IReadOnlyList<CategoryOptionDto> GarmentGroups, IReadOnlyList<CategoryOptionDto> ClothingTypes,
+    IReadOnlyList<CategoryOptionDto> Genders, IReadOnlyList<CategoryOptionDto> TargetUsers,
+    IReadOnlyList<CategoryOptionDto> Sizes, IReadOnlyList<CategoryOptionDto> ConditionGrades,
+    IReadOnlyList<ClassificationQuestionDto> ConditionQuestions);
 
 public record GroupedClassifiedBatchDto(Guid Id, string BatchCode, DateTime ClassificationDate,
     string FabricType, string GarmentGroup, string ClothingType, string Gender, string TargetUser,
