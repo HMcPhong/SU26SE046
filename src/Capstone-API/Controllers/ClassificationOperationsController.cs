@@ -51,5 +51,12 @@ public class ClassificationOperationsController(IClassificationOperationsService
         return batch is null ? NotFound() : Ok(batch);
     }
 
+    [HttpPost("grouped-batches/{groupedBatchId:guid}/send-to-warehouse")]
+    public async Task<IActionResult> SendGroupedBatchToWarehouse(Guid groupedBatchId)
+    {
+        await service.SendGroupedBatchToWarehouseAsync(CurrentUserId, groupedBatchId);
+        return NoContent();
+    }
+
     private Guid CurrentUserId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }

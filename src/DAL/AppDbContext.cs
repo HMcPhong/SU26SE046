@@ -31,6 +31,7 @@ namespace DAL
         public DbSet<Warehouse> Warehouses => Set<Warehouse>();
         public DbSet<WarehouseArea> WarehouseAreas => Set<WarehouseArea>();
         public DbSet<AreaGroup> AreaGroups => Set<AreaGroup>();
+        public DbSet<StorageLocation> StorageLocations => Set<StorageLocation>();
         public DbSet<Shift> Shifts => Set<Shift>();
         public DbSet<OperationalTeam> OperationalTeams => Set<OperationalTeam>();
         public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
@@ -182,6 +183,44 @@ namespace DAL
             modelBuilder.Entity<ClassifiedBatch>()
                 .HasIndex(x => x.GroupKey)
                 .IsUnique();
+
+            modelBuilder.Entity<StorageLocation>()
+                .HasIndex(x => new { x.WarehouseId, x.LocationCode })
+                .IsUnique();
+
+            modelBuilder.Entity<Inventory>()
+                .HasIndex(x => x.Sku)
+                .IsUnique();
+
+            modelBuilder.Entity<Inventory>()
+                .HasOne(x => x.StorageLocation)
+                .WithMany(x => x.Inventories)
+                .HasForeignKey(x => x.StorageLocationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Inventory>()
+                .HasOne(x => x.ClassifiedBatch)
+                .WithMany()
+                .HasForeignKey(x => x.ClassifiedBatchId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<InventoryTransaction>()
+                .HasOne(x => x.PerformedByStaff)
+                .WithMany()
+                .HasForeignKey(x => x.PerformedByStaffId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<TransactionItem>()
+                .HasOne(x => x.SourceLocation)
+                .WithMany()
+                .HasForeignKey(x => x.SourceLocationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<TransactionItem>()
+                .HasOne(x => x.DestinationLocation)
+                .WithMany()
+                .HasForeignKey(x => x.DestinationLocationId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<ClassificationResult>()
                 .HasOne(x => x.Criteria)

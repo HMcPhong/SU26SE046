@@ -22,9 +22,21 @@ public class ClassifiedBatch : BaseEntity
     public decimal TotalWeight { get; set; }
     public int TotalItem { get; set; }
     public string Status { get; set; } = string.Empty;
+    public DateTime? SentToWarehouseAt { get; set; }
+    public Guid? SentToWarehouseByStaffId { get; set; }
+    public DateTime? WarehouseReceivedAt { get; set; }
+    public Guid? WarehouseReceivedByStaffId { get; set; }
+    public DateTime? StoredAt { get; set; }
+    public Guid? StoredByStaffId { get; set; }
+    public decimal? ReceivedWeight { get; set; }
+    public int? ReceivedItemCount { get; set; }
+    public string? WarehouseReceiptNotes { get; set; }
     public virtual Warehouse Warehouse { get; set; } = null!;
     public virtual Profile? Profile { get; set; }
     public virtual AreaGroup? Group { get; set; }
     public virtual WarehouseArea? Area { get; set; }
+    public virtual User? SentToWarehouseByStaff { get; set; }
+    public virtual User? WarehouseReceivedByStaff { get; set; }
+    public virtual User? StoredByStaff { get; set; }
     public virtual ICollection<ClassifiedItem> Items { get; set; } = new List<ClassifiedItem>();
 }

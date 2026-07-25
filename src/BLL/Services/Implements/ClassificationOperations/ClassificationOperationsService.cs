@@ -134,6 +134,26 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
             group.Items.OrderBy(x => x.ClassifiedAt).Select(MapItem).ToList());
     }
 
+    public async Task SendGroupedBatchToWarehouseAsync(Guid staffId, Guid groupedBatchId)
+    {
+        var batch = await context.ClassifiedBatches
+            .Include(x => x.Items)
+            .FirstOrDefaultAsync(x => x.Id == groupedBatchId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Classified batch not found.");
+        if (batch.Status != "Open")
+            throw new InvalidOperationException("Only an open classified batch can be sent to warehouse.");
+        if (!batch.Items.Any(x => x.IsActive != false))
+            throw new InvalidOperationException("The classified batch does not contain any item.");
+
+        batch.TotalItem = batch.Items.Count(x => x.IsActive != false);
+        batch.Status = "PendingWarehouseReceipt";
+        batch.SentToWarehouseAt = DateTime.UtcNow;
+        batch.SentToWarehouseByStaffId = staffId;
+        batch.UpdateAt = DateTime.UtcNow;
+        batch.UpdatedBy = staffId;
+        await context.SaveChangesAsync();
+    }
+
     public async Task CompleteBatchAsync(Guid staffId, Guid batchId)
     {
         var batch = await RequireBatch(batchId);
