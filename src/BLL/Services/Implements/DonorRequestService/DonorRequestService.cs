@@ -39,7 +39,7 @@ namespace BLL.Services.Implements.DonorRequestService
                     Id = Guid.NewGuid(),
                     DonorId = donorId,
                     WarehouseId = dto.WarehouseId,
-                    PickupDate = DateTime.SpecifyKind(dto.PickupDate, DateTimeKind.Utc),
+                    PickupDate = DateTime.SpecifyKind(dto.PickupDate, DateTimeKind.Unspecified),
                     Description = dto.Description,
                     ImageUrls = dto.ImageUrls,
                     EstimateWeight = dto.EstimateWeight,
@@ -141,7 +141,7 @@ namespace BLL.Services.Implements.DonorRequestService
             }
 
             request.WarehouseId = dto.WarehouseId;
-            request.PickupDate = DateTime.SpecifyKind(dto.PickupDate, DateTimeKind.Utc);
+            request.PickupDate = DateTime.SpecifyKind(dto.PickupDate, DateTimeKind.Unspecified);
             request.Description = dto.Description;
             request.ImageUrls = dto.ImageUrls;
             request.EstimateWeight = dto.EstimateWeight;

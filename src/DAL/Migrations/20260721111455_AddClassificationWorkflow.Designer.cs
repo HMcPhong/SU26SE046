@@ -4,6 +4,7 @@ using DAL;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260721111455_AddClassificationWorkflow")]
+    partial class AddClassificationWorkflow
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -344,13 +347,6 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime>("ClassificationDate")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("ClothingType")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<int>("ConditionRating")
                         .HasColumnType("int");
 
@@ -366,45 +362,16 @@ namespace DAL.Migrations
                     b.Property<Guid?>("DeletedBy")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("FabricType")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("GarmentGroup")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Gender")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<Guid?>("GroupId")
                         .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("GroupKey")
-                        .IsRequired()
-                        .HasMaxLength(450)
-                        .HasColumnType("nvarchar(450)");
 
                     b.Property<bool?>("IsActive")
                         .HasColumnType("bit");
 
-                    b.Property<string>("ProcessingDirection")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid?>("ProfileId")
+                    b.Property<Guid>("ProfileId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<string>("Size")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("TargetUser")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -429,9 +396,6 @@ namespace DAL.Migrations
                     b.HasIndex("AreaId");
 
                     b.HasIndex("GroupId");
-
-                    b.HasIndex("GroupKey")
-                        .IsUnique();
 
                     b.HasIndex("ProfileId");
 
@@ -487,9 +451,6 @@ namespace DAL.Migrations
 
                     b.Property<string>("Gender")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.PrimitiveCollection<string>("ImageUrls")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<bool?>("IsActive")
@@ -896,12 +857,6 @@ namespace DAL.Migrations
                     b.PrimitiveCollection<string>("BatchImages")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime?>("ClassificationReceivedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("ClassificationReceivedByStaffId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime2");
 
@@ -933,9 +888,6 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<DateTime?>("SentToClassificationAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<Guid>("ShiftId")
                         .HasColumnType("uniqueidentifier");
 
@@ -960,8 +912,6 @@ namespace DAL.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
-
-                    b.HasIndex("ClassificationReceivedByStaffId");
 
                     b.HasIndex("ReceivingTeamId");
 
@@ -2054,7 +2004,8 @@ namespace DAL.Migrations
                     b.HasOne("DAL.Models.Profile", "Profile")
                         .WithMany("ClassifiedBatches")
                         .HasForeignKey("ProfileId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.HasOne("DAL.Models.Warehouse", "Warehouse")
                         .WithMany()
@@ -2201,11 +2152,6 @@ namespace DAL.Migrations
 
             modelBuilder.Entity("DAL.Models.IntakeBatch", b =>
                 {
-                    b.HasOne("DAL.Models.User", "ClassificationReceivedByStaff")
-                        .WithMany()
-                        .HasForeignKey("ClassificationReceivedByStaffId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("DAL.Models.OperationalTeam", "ReceivingTeam")
                         .WithMany("IntakeBatches")
                         .HasForeignKey("ReceivingTeamId")
@@ -2222,8 +2168,6 @@ namespace DAL.Migrations
                         .HasForeignKey("WarehouseId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
-
-                    b.Navigation("ClassificationReceivedByStaff");
 
                     b.Navigation("ReceivingTeam");
 

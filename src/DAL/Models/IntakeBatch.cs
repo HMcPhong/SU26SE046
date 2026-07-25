@@ -12,6 +12,9 @@ namespace DAL.Models
         public string RouteName { get; set; } = string.Empty;
         public DateTime? StartedAt { get; set; }
         public DateTime? CompletedAt { get; set; }
+        public DateTime? SentToClassificationAt { get; set; }
+        public DateTime? ClassificationReceivedAt { get; set; }
+        public Guid? ClassificationReceivedByStaffId { get; set; }
         public DateTime IntakeDate { get; set; }
         public decimal TotalWeight { get; set; }
         public string Status { get; set; } = string.Empty;
@@ -20,6 +23,7 @@ namespace DAL.Models
         public virtual Warehouse Warehouse { get; set; } = null!;
         public virtual Shift Shift { get; set; } = null!;
         public virtual OperationalTeam? ReceivingTeam { get; set; }
+        public virtual User? ClassificationReceivedByStaff { get; set; }
         public virtual ICollection<IntakeBatchDonationRequest> IntakeBatchDonationRequests { get; set; }
             = new List<IntakeBatchDonationRequest>();
         public virtual ICollection<ClassifiedItem> ClassifiedItems { get; set; }
