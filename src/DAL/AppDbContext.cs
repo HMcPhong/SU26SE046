@@ -158,9 +158,14 @@ namespace DAL
 
             modelBuilder.Entity<IntakeBatch>()
                 .HasOne(x => x.Shift)
-                .WithOne(x => x.IntakeBatch)
-                .HasForeignKey<IntakeBatch>(x => x.ShiftId)
+                .WithMany(x => x.IntakeBatches)
+                .HasForeignKey(x => x.ShiftId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<IntakeBatch>()
+                .HasIndex(x => new { x.ShiftId, x.ReceivingTeamId })
+                .IsUnique()
+                .HasFilter("[ReceivingTeamId] IS NOT NULL AND [IsActive] = 1");
 
             modelBuilder.Entity<IntakeBatch>()
                 .HasOne(x => x.ReceivingTeam)

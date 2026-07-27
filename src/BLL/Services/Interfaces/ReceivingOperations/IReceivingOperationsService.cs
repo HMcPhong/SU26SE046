@@ -6,8 +6,13 @@ public interface IReceivingOperationsService
 {
     Task GenerateStandardShiftsAsync(GenerateShiftsDto dto);
     Task<GenerateYearShiftsResultDto> GenerateYearShiftsAsync(GenerateYearShiftsDto dto);
+    Task UpdateShiftAsync(Guid shiftId, UpdateManagerShiftDto dto);
+    Task DeleteShiftAsync(Guid shiftId);
     Task<Guid> CreateTeamAsync(CreateReceivingTeamDto dto);
+    Task UpdateTeamAsync(Guid teamId, UpdateReceivingTeamDto dto);
+    Task DeleteTeamAsync(Guid teamId);
     Task<int> PlanShiftAsync(PlanReceivingShiftDto dto);
+    Task<AutoBalanceResultDto> AutoBalanceShiftAsync(Guid shiftId);
     Task<ReceivingDispatchBoardDto> GetDispatchBoardAsync();
     Task<ManagerReceivingSetupDto> GetManagerSetupAsync();
     Task AssignRequestAsync(AssignDonationRequestDto dto);

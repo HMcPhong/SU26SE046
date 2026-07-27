@@ -3,8 +3,14 @@ namespace BLL.DTOs;
 public record GenerateShiftsDto(Guid WarehouseId, DateTime Date);
 public record GenerateYearShiftsDto(Guid WarehouseId, int Year, List<DateTime>? HolidayDates);
 public record GenerateYearShiftsResultDto(int WorkingDays, int CreatedShifts, int SkippedExisting);
+public record UpdateManagerShiftDto(Guid WarehouseId, string ShiftName, DateTime ShiftDate,
+    TimeSpan StartTime, TimeSpan EndTime);
 public record CreateReceivingTeamDto(Guid ShiftId, string TeamName, List<Guid> StaffIds);
+public record UpdateReceivingTeamDto(string TeamName, List<Guid> StaffIds);
 public record PlanReceivingShiftDto(Guid ShiftId, Guid TeamId);
+public record AutoBalanceShiftDto(Guid ShiftId);
+public record AutoBalanceResultDto(int TeamCount, int RequestCount,
+    Dictionary<Guid, int> RequestsPerTeam);
 public record AssignDonationRequestDto(Guid RequestId, Guid TeamId);
 public record ConfirmPickupDto(decimal ActualWeight, string? Notes, List<string>? ImageUrls);
 public record ReschedulePickupDto(DateTime PickupDate, string? Reason);
@@ -53,12 +59,16 @@ public record DispatchTeamDto(Guid Id, string TeamName, Guid ShiftId, string Shi
     DateTime ShiftDate, string ShiftTime, Guid WarehouseId, List<ReceivingTeamMemberDto> Members);
 public record ReceivingDispatchBoardDto(List<DispatchRequestDto> Requests, List<DispatchTeamDto> Teams);
 public record ManagerWarehouseOptionDto(Guid Id, string Name, string Address);
-public record ManagerStaffOptionDto(Guid Id, string FullName, string UserName, string PhoneNumber);
-public record ManagerTeamOverviewDto(Guid Id, string TeamName, List<ReceivingTeamMemberDto> Members);
+public record ManagerStaffOptionDto(Guid Id, string FullName, string UserName, string PhoneNumber,
+    Guid? WarehouseId);
+public record ManagerAssignedRequestDto(Guid Id, string Code, string ContactName, string PhoneNumber,
+    string Address, DateTime? PickupDate, string Status, int RouteOrder);
+public record ManagerTeamOverviewDto(Guid Id, string TeamName, List<ReceivingTeamMemberDto> Members,
+    Guid? IntakeBatchId, string? IntakeBatchCode, string? IntakeBatchStatus,
+    string? IntakeBatchRoute, decimal IntakeBatchWeight,
+    List<ManagerAssignedRequestDto> Requests);
 public record ManagerShiftOverviewDto(Guid Id, Guid WarehouseId, string WarehouseName, string ShiftName,
     DateTime ShiftDate, TimeSpan StartTime, TimeSpan EndTime, string Status,
-    ManagerTeamOverviewDto? Team, Guid? IntakeBatchId, string? IntakeBatchCode,
-    string? IntakeBatchStatus, string? IntakeBatchRoute, decimal IntakeBatchWeight,
-    int AssignedRequests);
+    List<ManagerTeamOverviewDto> Teams, int AssignedRequests);
 public record ManagerReceivingSetupDto(List<ManagerWarehouseOptionDto> Warehouses,
     List<ManagerStaffOptionDto> ReceivingStaff, List<ManagerShiftOverviewDto> Shifts);

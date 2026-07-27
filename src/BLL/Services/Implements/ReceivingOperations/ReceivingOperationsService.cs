@@ -102,6 +102,53 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         return new GenerateYearShiftsResultDto(workingDays, created, skipped);
     }
 
+    public async Task UpdateShiftAsync(Guid shiftId, UpdateManagerShiftDto dto)
+    {
+        var shift = await context.Shifts.FirstOrDefaultAsync(x => x.Id == shiftId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Shift not found.");
+        if (shift.Status != "Scheduled")
+            throw new InvalidOperationException("Only a scheduled shift can be edited.");
+        if (string.IsNullOrWhiteSpace(dto.ShiftName))
+            throw new InvalidOperationException("Shift name is required.");
+        if (dto.StartTime >= dto.EndTime)
+            throw new InvalidOperationException("Shift end time must be later than its start time.");
+        if (!await context.Warehouses.AnyAsync(x => x.Id == dto.WarehouseId && x.IsActive != false))
+            throw new InvalidOperationException("Warehouse not found.");
+
+        var shiftDate = dto.ShiftDate.Date;
+        var overlaps = await context.Shifts.AnyAsync(x => x.Id != shiftId
+            && x.WarehouseId == dto.WarehouseId && x.ShiftDate == shiftDate
+            && x.IsActive != false && dto.StartTime < x.EndTime && dto.EndTime > x.StartTime);
+        if (overlaps)
+            throw new InvalidOperationException("This time overlaps another shift at the selected warehouse.");
+
+        shift.WarehouseId = dto.WarehouseId;
+        shift.ShiftName = dto.ShiftName.Trim();
+        shift.ShiftDate = shiftDate;
+        shift.StartTime = dto.StartTime;
+        shift.EndTime = dto.EndTime;
+        shift.UpdateAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+    }
+
+    public async Task DeleteShiftAsync(Guid shiftId)
+    {
+        var shift = await context.Shifts.FirstOrDefaultAsync(x => x.Id == shiftId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Shift not found.");
+        if (shift.Status != "Scheduled")
+            throw new InvalidOperationException("Only a scheduled shift can be deleted.");
+        var hasOperations = await context.OperationalTeams.AnyAsync(x => x.ShiftId == shiftId && x.IsActive != false)
+            || await context.PickupAssignments.AnyAsync(x => x.ShiftId == shiftId && x.IsActive != false)
+            || await context.IntakeBatches.AnyAsync(x => x.ShiftId == shiftId && x.IsActive != false);
+        if (hasOperations)
+            throw new InvalidOperationException("Cannot delete a shift that already has a team, assignments, or an intake batch.");
+
+        shift.IsActive = false;
+        shift.DeleteAt = DateTime.UtcNow;
+        shift.UpdateAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+    }
+
     public async Task<Guid> CreateTeamAsync(CreateReceivingTeamDto dto)
     {
         if (dto.StaffIds.Distinct().Count() != 2)
@@ -110,11 +157,11 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             ?? throw new InvalidOperationException("Shift not found.");
         if (shift.Status != "Scheduled")
             throw new InvalidOperationException("A team can only be created for a scheduled shift.");
-        if (await context.OperationalTeams.AnyAsync(x => x.ShiftId == shift.Id && x.IsActive != false))
-            throw new InvalidOperationException("This shift already has a receiving team.");
         var validStaff = await context.Users.Include(x => x.Role).CountAsync(x => dto.StaffIds.Contains(x.Id)
-            && x.Role.RoleName == "ReceivingStaff" && x.IsActive != false);
-        if (validStaff != 2) throw new InvalidOperationException("Both members must be active ReceivingStaff users.");
+            && x.Role.RoleName == "ReceivingStaff" && x.WarehouseId == shift.WarehouseId
+            && x.IsActive != false);
+        if (validStaff != 2)
+            throw new InvalidOperationException("Both members must be active ReceivingStaff users working at the shift warehouse.");
         var overlappingStaff = await context.TeamMembers
             .Where(x => dto.StaffIds.Contains(x.StaffId) && x.IsActive != false
                 && x.Team.IsActive != false && x.Team.Shift.IsActive != false
@@ -141,6 +188,71 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         return team.Id;
     }
 
+    public async Task UpdateTeamAsync(Guid teamId, UpdateReceivingTeamDto dto)
+    {
+        if (dto.StaffIds.Distinct().Count() != 2)
+            throw new InvalidOperationException("A receiving team must have exactly two different staff members.");
+        if (string.IsNullOrWhiteSpace(dto.TeamName))
+            throw new InvalidOperationException("Team name is required.");
+
+        var team = await context.OperationalTeams.Include(x => x.Shift).Include(x => x.Members)
+            .FirstOrDefaultAsync(x => x.Id == teamId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Receiving team not found.");
+        if (team.Shift.Status != "Scheduled")
+            throw new InvalidOperationException("Members can only be changed before the shift starts.");
+
+        var validStaff = await context.Users.Include(x => x.Role).CountAsync(x => dto.StaffIds.Contains(x.Id)
+            && x.Role.RoleName == "ReceivingStaff" && x.WarehouseId == team.Shift.WarehouseId
+            && x.IsActive != false);
+        if (validStaff != 2)
+            throw new InvalidOperationException("Both members must be active ReceivingStaff users working at the shift warehouse.");
+
+        var conflicts = await context.TeamMembers.AnyAsync(x => dto.StaffIds.Contains(x.StaffId)
+            && x.TeamId != teamId && x.IsActive != false && x.Team.IsActive != false
+            && x.Team.Shift.IsActive != false && x.Team.Shift.ShiftDate == team.Shift.ShiftDate
+            && team.Shift.StartTime < x.Team.Shift.EndTime && team.Shift.EndTime > x.Team.Shift.StartTime);
+        if (conflicts)
+            throw new InvalidOperationException("A selected staff member is already assigned to an overlapping shift.");
+
+        team.TeamName = dto.TeamName.Trim();
+        team.UpdateAt = DateTime.UtcNow;
+        foreach (var member in team.Members)
+        {
+            member.IsActive = dto.StaffIds.Contains(member.StaffId);
+            member.UpdateAt = DateTime.UtcNow;
+            member.DeleteAt = member.IsActive == false ? DateTime.UtcNow : null;
+        }
+        foreach (var staffId in dto.StaffIds.Where(id => team.Members.All(x => x.StaffId != id)))
+            context.TeamMembers.Add(new TeamMember
+            {
+                Id = Guid.NewGuid(), TeamId = team.Id, StaffId = staffId,
+                CreateAt = DateTime.UtcNow, IsActive = true
+            });
+        await context.SaveChangesAsync();
+    }
+
+    public async Task DeleteTeamAsync(Guid teamId)
+    {
+        var team = await context.OperationalTeams.Include(x => x.Shift)
+            .FirstOrDefaultAsync(x => x.Id == teamId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Receiving team not found.");
+        if (team.Shift.Status != "Scheduled")
+            throw new InvalidOperationException("A team can only be deleted before the shift starts.");
+        if (await context.PickupAssignments.AnyAsync(x => x.TeamId == teamId && x.IsActive != false)
+            || await context.IntakeBatches.AnyAsync(x => x.ReceivingTeamId == teamId && x.IsActive != false))
+            throw new InvalidOperationException("Move all requests out of this team before deleting it.");
+
+        team.IsActive = false;
+        team.DeleteAt = DateTime.UtcNow;
+        var members = await context.TeamMembers.Where(x => x.TeamId == teamId && x.IsActive != false).ToListAsync();
+        foreach (var member in members)
+        {
+            member.IsActive = false;
+            member.DeleteAt = DateTime.UtcNow;
+        }
+        await context.SaveChangesAsync();
+    }
+
     public async Task<int> PlanShiftAsync(PlanReceivingShiftDto dto)
     {
         var shift = await context.Shifts.FirstOrDefaultAsync(x => x.Id == dto.ShiftId && x.IsActive != false)
@@ -156,7 +268,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             .Where(x => x.WarehouseId == shift.WarehouseId && x.IsActive != false
                 && x.Status == DonationRequestStatus.WaitingReceivingStaff
                 && x.DeliveryMethod == "StaffPickup"
-                && x.PickupDate.HasValue && x.PickupDate.Value.Date <= shift.ShiftDate.Date
+                && x.PickupDate.HasValue && x.PickupDate.Value.Date == shift.ShiftDate.Date
                 && !alreadyPlanned.Contains(x.Id))
             .OrderBy(x => x.PickupDate)
             .ThenBy(x => x.PickupAddress)
@@ -165,7 +277,8 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         if (candidates.Count == 0) return 0;
 
         var batch = await context.IntakeBatches
-            .FirstOrDefaultAsync(x => x.ShiftId == shift.Id && x.IsActive != false);
+            .FirstOrDefaultAsync(x => x.ShiftId == shift.Id && x.ReceivingTeamId == team.Id
+                && x.IsActive != false);
         if (batch is null)
         {
             var areas = candidates.Select(x => ExtractArea(x.PickupAddress)).Distinct().ToList();
@@ -173,15 +286,11 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             {
                 Id = Guid.NewGuid(), WarehouseId = shift.WarehouseId, ShiftId = shift.Id, ReceivingTeamId = team.Id,
                 IntakeDate = shift.ShiftDate.Date.Add(shift.StartTime), BatchCode = $"INT-{shift.ShiftDate:yyyyMMdd}-{Guid.NewGuid():N}"[..22].ToUpperInvariant(),
-                RouteName = string.Join(" → ", areas), Status = "Planned", CreateAt = DateTime.UtcNow
+                RouteName = string.Join(" → ", areas), Status = "Planned", CreateAt = DateTime.UtcNow,
+                IsActive = true
             };
             context.IntakeBatches.Add(batch);
         }
-        else if (batch.ReceivingTeamId != team.Id)
-        {
-            throw new InvalidOperationException("This shift already has an intake batch assigned to another team.");
-        }
-
         var planned = 0;
         var order = await context.PickupAssignments
             .Where(x => x.IntakeBatchId == batch.Id && x.IsActive != false)
@@ -201,6 +310,131 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         }
         await context.SaveChangesAsync();
         return planned;
+    }
+
+    public async Task<AutoBalanceResultDto> AutoBalanceShiftAsync(Guid shiftId)
+    {
+        var selectedShift = await context.Shifts.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == shiftId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Shift not found.");
+        if (selectedShift.Status != "Scheduled")
+            throw new InvalidOperationException("Requests can only be balanced before the shift starts.");
+
+        // Planning is performed for the whole warehouse working day. This prevents
+        // the morning shift from consuming every request before the afternoon shift
+        // is planned and lets geographic clusters be shared fairly across all teams.
+        var dayShifts = await context.Shifts
+            .Include(x => x.Teams.Where(t => t.IsActive != false))
+                .ThenInclude(x => x.Members.Where(m => m.IsActive != false))
+            .Where(x => x.IsActive != false
+                && x.WarehouseId == selectedShift.WarehouseId
+                && x.ShiftDate.Date == selectedShift.ShiftDate.Date
+                && x.Status == "Scheduled")
+            .OrderBy(x => x.StartTime)
+            .ToListAsync();
+        var teams = dayShifts.SelectMany(x => x.Teams)
+            .Where(x => x.Members.Count(m => m.IsActive != false) == 2)
+            .OrderBy(x => x.Shift.StartTime)
+            .ThenBy(x => x.TeamName)
+            .ThenBy(x => x.Id)
+            .ToList();
+        if (teams.Count == 0)
+            throw new InvalidOperationException(
+                "Create at least one complete receiving team for this warehouse and working day before auto-assigning requests.");
+
+        var dayShiftIds = dayShifts.Select(x => x.Id).ToList();
+        var pendingAssignments = await context.PickupAssignments
+            .Include(x => x.DonorRequest)
+            .Where(x => dayShiftIds.Contains(x.ShiftId)
+                && x.IsActive != false && x.Status == "Pending")
+            .ToListAsync();
+        var assignedElsewhere = context.PickupAssignments
+            .Where(x => x.IsActive != false && !dayShiftIds.Contains(x.ShiftId))
+            .Select(x => x.DonorRequestId);
+        var unassigned = await context.DonationRequests
+            .Where(x => x.WarehouseId == selectedShift.WarehouseId && x.IsActive != false
+                && (x.Status == DonationRequestStatus.WaitingReceivingStaff
+                    || x.Status == DonationRequestStatus.PendingStaffAssign)
+                && x.DeliveryMethod == "StaffPickup"
+                && x.PickupDate.HasValue && x.PickupDate.Value.Date == selectedShift.ShiftDate.Date
+                && !assignedElsewhere.Contains(x.Id))
+            .ToListAsync();
+
+        var requests = pendingAssignments.Select(x => x.DonorRequest).Concat(unassigned)
+            .GroupBy(x => x.Id).Select(x => x.First())
+            .OrderBy(x => ExtractArea(x.PickupAddress))
+            .ThenBy(x => x.PickupAddress).ThenBy(x => x.Id).ToList();
+        if (requests.Count == 0)
+            return new AutoBalanceResultDto(teams.Count, 0,
+                teams.ToDictionary(x => x.Id, _ => 0));
+
+        var batches = await context.IntakeBatches
+            .Where(x => dayShiftIds.Contains(x.ShiftId) && x.IsActive != false)
+            .ToListAsync();
+        var batchByTeam = new Dictionary<Guid, IntakeBatch>();
+        foreach (var team in teams)
+        {
+            var batch = batches.FirstOrDefault(x => x.ReceivingTeamId == team.Id);
+            if (batch is null)
+            {
+                batch = new IntakeBatch
+                {
+                    Id = Guid.NewGuid(), WarehouseId = selectedShift.WarehouseId, ShiftId = team.ShiftId,
+                    ReceivingTeamId = team.Id,
+                    IntakeDate = team.Shift.ShiftDate.Date.Add(team.Shift.StartTime),
+                    BatchCode = $"INT-{team.Shift.ShiftDate:yyyyMMdd}-{Guid.NewGuid():N}"[..22].ToUpperInvariant(),
+                    RouteName = string.Empty, Status = "Planned", CreateAt = DateTime.UtcNow,
+                    IsActive = true
+                };
+                context.IntakeBatches.Add(batch);
+            }
+            batchByTeam[team.Id] = batch;
+        }
+
+        // Sorted area clusters are partitioned into balanced contiguous chunks.
+        // This keeps nearby/identical administrative areas together while guaranteeing
+        // that team workloads differ by at most one request.
+        var baseSize = requests.Count / teams.Count;
+        var remainder = requests.Count % teams.Count;
+        var assignmentByRequest = pendingAssignments.ToDictionary(x => x.DonorRequestId);
+        var counts = new Dictionary<Guid, int>();
+        var offset = 0;
+        for (var teamIndex = 0; teamIndex < teams.Count; teamIndex++)
+        {
+            var team = teams[teamIndex];
+            var quota = baseSize + (teamIndex < remainder ? 1 : 0);
+            var teamRequests = requests.Skip(offset).Take(quota).ToList();
+            offset += quota;
+            counts[team.Id] = teamRequests.Count;
+            var batch = batchByTeam[team.Id];
+            batch.RouteName = string.Join(" → ", teamRequests.Select(x => ExtractArea(x.PickupAddress)).Distinct());
+            batch.UpdateAt = DateTime.UtcNow;
+
+            for (var index = 0; index < teamRequests.Count; index++)
+            {
+                var request = teamRequests[index];
+                if (!assignmentByRequest.TryGetValue(request.Id, out var assignment))
+                {
+                    assignment = new PickupAssignment
+                    {
+                        Id = Guid.NewGuid(), DonorRequestId = request.Id,
+                        CreateAt = DateTime.UtcNow, IsActive = true, Status = "Pending"
+                    };
+                    context.PickupAssignments.Add(assignment);
+                    assignmentByRequest[request.Id] = assignment;
+                }
+                assignment.ShiftId = team.ShiftId;
+                assignment.TeamId = team.Id;
+                assignment.IntakeBatchId = batch.Id;
+                assignment.RouteOrder = index + 1;
+                assignment.AreaKey = ExtractArea(request.PickupAddress);
+                assignment.UpdateAt = DateTime.UtcNow;
+                request.Status = DonationRequestStatus.ReceivingStaffAssigned;
+                request.UpdateAt = DateTime.UtcNow;
+            }
+        }
+        await context.SaveChangesAsync();
+        return new AutoBalanceResultDto(teams.Count, requests.Count, counts);
     }
 
     public async Task<ReceivingDispatchBoardDto> GetDispatchBoardAsync()
@@ -243,26 +477,38 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         var staff = await context.Users.AsNoTracking()
             .Where(x => x.IsActive != false && x.Role.RoleName == "ReceivingStaff")
             .OrderBy(x => x.FullName)
-            .Select(x => new ManagerStaffOptionDto(x.Id, x.FullName, x.UserName, x.PhoneNumber)).ToListAsync();
+            .Select(x => new ManagerStaffOptionDto(x.Id, x.FullName, x.UserName, x.PhoneNumber,
+                x.WarehouseId)).ToListAsync();
         var shifts = await context.Shifts.AsNoTracking()
             .Include(x => x.Warehouse)
             .Include(x => x.Teams.Where(t => t.IsActive != false))
                 .ThenInclude(x => x.Members.Where(m => m.IsActive != false)).ThenInclude(x => x.Staff)
-            .Include(x => x.IntakeBatch)!.ThenInclude(x => x!.PickupAssignments)
+            .Include(x => x.IntakeBatches.Where(b => b.IsActive != false))
+                .ThenInclude(x => x.PickupAssignments.Where(a => a.IsActive != false))
+                    .ThenInclude(x => x.DonorRequest)
             .Where(x => x.IsActive != false)
             .OrderByDescending(x => x.ShiftDate).ThenBy(x => x.StartTime)
             .ToListAsync();
         var shiftDtos = shifts.Select(x =>
         {
-            var team = x.Teams.FirstOrDefault();
+            var teamDtos = x.Teams.OrderBy(t => t.TeamName).Select(team =>
+            {
+                var batch = x.IntakeBatches.FirstOrDefault(b => b.ReceivingTeamId == team.Id);
+                var requests = batch?.PickupAssignments.OrderBy(a => a.RouteOrder).Select(a =>
+                    new ManagerAssignedRequestDto(a.DonorRequestId,
+                        $"DR-{a.DonorRequest.CreateAt!.Value.Year}-{a.DonorRequestId.ToString()[..8].ToUpperInvariant()}",
+                        a.DonorRequest.ContactName, a.DonorRequest.ContactPhoneNumber,
+                        a.DonorRequest.PickupAddress, a.DonorRequest.PickupDate,
+                        a.Status, a.RouteOrder)).ToList() ?? [];
+                return new ManagerTeamOverviewDto(team.Id, team.TeamName,
+                    team.Members.Select(m => new ReceivingTeamMemberDto(
+                        m.StaffId, m.Staff.FullName, m.Staff.PhoneNumber)).ToList(),
+                    batch?.Id, batch?.BatchCode, batch?.Status, batch?.RouteName,
+                    batch?.TotalWeight ?? 0, requests);
+            }).ToList();
             return new ManagerShiftOverviewDto(x.Id, x.WarehouseId, x.Warehouse.WarehouseName,
                 x.ShiftName, x.ShiftDate, x.StartTime, x.EndTime, x.Status,
-                team is null ? null : new ManagerTeamOverviewDto(team.Id, team.TeamName,
-                    team.Members.Select(m => new ReceivingTeamMemberDto(
-                        m.StaffId, m.Staff.FullName, m.Staff.PhoneNumber)).ToList()),
-                x.IntakeBatch?.Id, x.IntakeBatch?.BatchCode, x.IntakeBatch?.Status,
-                x.IntakeBatch?.RouteName, x.IntakeBatch?.TotalWeight ?? 0,
-                x.IntakeBatch?.PickupAssignments.Count(a => a.IsActive != false) ?? 0);
+                teamDtos, teamDtos.Sum(t => t.Requests.Count));
         }).ToList();
         return new ManagerReceivingSetupDto(warehouses, staff, shiftDtos);
     }
@@ -272,8 +518,10 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         var request = await context.DonationRequests.Include(x => x.Warehouse)
             .FirstOrDefaultAsync(x => x.Id == dto.RequestId && x.IsActive != false)
             ?? throw new InvalidOperationException("Donation request not found.");
-        if (await context.PickupAssignments.AnyAsync(x => x.DonorRequestId == dto.RequestId && x.IsActive != false))
-            throw new InvalidOperationException("Donation request is already assigned.");
+        var existingAssignment = await context.PickupAssignments
+            .FirstOrDefaultAsync(x => x.DonorRequestId == dto.RequestId && x.IsActive != false);
+        if (existingAssignment is not null && existingAssignment.Status != "Pending")
+            throw new InvalidOperationException("Only a pending assignment can be moved to another team.");
         var team = await context.OperationalTeams.Include(x => x.Shift).Include(x => x.Members)
             .FirstOrDefaultAsync(x => x.Id == dto.TeamId && x.IsActive != false && x.TeamType == "Receiving")
             ?? throw new InvalidOperationException("Receiving team not found.");
@@ -281,8 +529,11 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             throw new InvalidOperationException("Receiving team must contain exactly two members.");
         if (team.Shift.WarehouseId != request.WarehouseId)
             throw new InvalidOperationException("The team and donation request must belong to the same warehouse.");
+        if (!request.PickupDate.HasValue || request.PickupDate.Value.Date != team.Shift.ShiftDate.Date)
+            throw new InvalidOperationException("The team shift date must match the donation pickup appointment date.");
 
-        var batch = await context.IntakeBatches.FirstOrDefaultAsync(x => x.ShiftId == team.ShiftId && x.IsActive != false);
+        var batch = await context.IntakeBatches.FirstOrDefaultAsync(x => x.ShiftId == team.ShiftId
+            && x.ReceivingTeamId == team.Id && x.IsActive != false);
         if (batch is null)
         {
             batch = new IntakeBatch
@@ -291,22 +542,24 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
                 ReceivingTeamId = team.Id, IntakeDate = team.Shift.ShiftDate.Date.Add(team.Shift.StartTime),
                 BatchCode = $"INT-{team.Shift.ShiftDate:yyyyMMdd}-{Guid.NewGuid():N}"[..22].ToUpperInvariant(),
                 RouteName = request.DeliveryMethod == "DonorDropOff" ? "Nhận trực tiếp tại kho" : ExtractArea(request.PickupAddress),
-                Status = "Planned", CreateAt = DateTime.UtcNow
+                Status = "Planned", CreateAt = DateTime.UtcNow, IsActive = true
             };
             context.IntakeBatches.Add(batch);
         }
-        else if (batch.ReceivingTeamId != team.Id)
-            throw new InvalidOperationException("This shift already belongs to another receiving team.");
-
         var order = await context.PickupAssignments.Where(x => x.IntakeBatchId == batch.Id && x.IsActive != false)
             .Select(x => (int?)x.RouteOrder).MaxAsync() ?? 0;
-        context.PickupAssignments.Add(new PickupAssignment
+        var assignment = existingAssignment ?? new PickupAssignment
         {
-            Id = Guid.NewGuid(), DonorRequestId = request.Id, ShiftId = team.ShiftId, TeamId = team.Id,
-            IntakeBatchId = batch.Id, RouteOrder = order + 1,
-            AreaKey = request.DeliveryMethod == "DonorDropOff" ? "Tại kho" : ExtractArea(request.PickupAddress),
-            Status = "Pending", CreateAt = DateTime.UtcNow
-        });
+            Id = Guid.NewGuid(), DonorRequestId = request.Id,
+            Status = "Pending", CreateAt = DateTime.UtcNow, IsActive = true
+        };
+        if (existingAssignment is null) context.PickupAssignments.Add(assignment);
+        assignment.ShiftId = team.ShiftId;
+        assignment.TeamId = team.Id;
+        assignment.IntakeBatchId = batch.Id;
+        assignment.RouteOrder = order + 1;
+        assignment.AreaKey = request.DeliveryMethod == "DonorDropOff" ? "Tại kho" : ExtractArea(request.PickupAddress);
+        assignment.UpdateAt = DateTime.UtcNow;
         request.Status = DonationRequestStatus.ReceivingStaffAssigned;
         request.UpdateAt = DateTime.UtcNow;
         await context.SaveChangesAsync();
