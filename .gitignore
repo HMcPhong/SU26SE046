@@ -1,5 +1,6 @@
 # Build outputs
 artifacts/
+.build-check/
 [Bb]in/
 [Oo]bj/
 

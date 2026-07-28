@@ -10,7 +10,7 @@ public record WarehouseAreaLayoutDto(Guid Id, string AreaName, string? Descripti
     IReadOnlyList<WarehouseLocationLayoutDto> Locations);
 public record WarehouseGroupLayoutDto(Guid Id, string GroupName, string? Description,
     decimal CapacityKg, decimal CurrentWeightKg);
-public record WarehouseLocationLayoutDto(Guid Id, string LocationCode, string AisleCode,
+public record WarehouseLocationLayoutDto(Guid Id, Guid? AreaGroupId, string LocationCode, string AisleCode,
     string RackCode, string ShelfCode, string BinCode, string? PreferredGarmentGroup,
     string? PreferredProcessingDirection, decimal CapacityKg, decimal CurrentWeightKg,
     string Status, int InventoryCount, int ItemQuantity);
@@ -50,3 +50,18 @@ public record WarehouseTransactionItemDto(Guid Id, Guid InventoryId, string Sku,
 public record WarehouseTransactionDto(Guid Id, string TransactionCode, string TransactionType,
     string? ReferenceType, Guid? ReferenceId, string Status, string? Notes,
     DateTime PerformedAt, string PerformedBy, IReadOnlyList<WarehouseTransactionItemDto> Items);
+
+public record WarehouseIntakeTraceDto(Guid Id, string BatchCode, DateTime IntakeDate,
+    string Status, string? RouteName, int DonationRequests, int ClassifiedItems,
+    IReadOnlyList<WarehouseClassifiedBatchTraceDto> ClassifiedBatches);
+public record WarehouseClassifiedBatchTraceDto(Guid Id, string BatchCode, string Status,
+    string ClothingType, string ConditionGrade, string ProcessingDirection,
+    int ItemCount, decimal WeightKg, string? InventorySku, string? LocationCode);
+
+public record SaveWarehouseAreaDto(Guid WarehouseId, string AreaName, string? Description,
+    decimal CapacityKg);
+public record SaveWarehouseGroupDto(Guid AreaId, string GroupName, string? Description,
+    decimal CapacityKg);
+public record SaveStorageLocationDto(Guid AreaGroupId, string LocationCode, string AisleCode,
+    string RackCode, string ShelfCode, string BinCode, string? PreferredGarmentGroup,
+    string? PreferredProcessingDirection, decimal CapacityKg, string Status);

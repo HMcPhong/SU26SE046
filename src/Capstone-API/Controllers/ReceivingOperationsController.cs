@@ -93,6 +93,19 @@ public class ReceivingOperationsController(IReceivingOperationsService service) 
     public async Task<IActionResult> Confirm(Guid batchId, Guid requestId, ConfirmPickupDto dto)
     { await service.ConfirmPickupAsync(CurrentUserId, batchId, requestId, dto); return NoContent(); }
 
+    [HttpGet("my-warehouse-dropoffs")]
+    [Authorize(Roles = "ReceivingStaff")]
+    public async Task<IActionResult> MyWarehouseDropOffs()
+        => Ok(await service.GetMyWarehouseDropOffsAsync(CurrentUserId));
+
+    [HttpPost("my-warehouse-dropoffs/{requestId:guid}/confirm")]
+    [Authorize(Roles = "ReceivingStaff")]
+    public async Task<IActionResult> ConfirmWarehouseDropOff(Guid requestId, ConfirmPickupDto dto)
+    {
+        await service.ConfirmWarehouseDropOffAsync(CurrentUserId, requestId, dto);
+        return NoContent();
+    }
+
     [HttpPost("my-batches/{batchId:guid}/requests/{requestId:guid}/reschedule")]
     [Authorize(Roles = "ReceivingStaff")]
     public async Task<IActionResult> Reschedule(Guid batchId, Guid requestId, ReschedulePickupDto dto)

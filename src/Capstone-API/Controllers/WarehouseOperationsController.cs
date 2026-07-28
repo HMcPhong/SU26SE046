@@ -12,13 +12,65 @@ namespace Capstone_API.Controllers;
 public class WarehouseOperationsController(IWarehouseOperationsService service) : ControllerBase
 {
     [HttpGet("dashboard")]
-    public async Task<IActionResult> Dashboard() => Ok(await service.GetDashboardAsync());
+    public async Task<IActionResult> Dashboard([FromQuery] Guid? warehouseId) =>
+        Ok(await service.GetDashboardAsync(CurrentUserId, warehouseId));
 
     [HttpGet("layout")]
-    public async Task<IActionResult> Layout() => Ok(await service.GetLayoutAsync(CurrentUserId));
+    public async Task<IActionResult> Layout([FromQuery] Guid? warehouseId) =>
+        Ok(await service.GetLayoutAsync(CurrentUserId, warehouseId));
 
     [HttpGet("inbound-batches")]
-    public async Task<IActionResult> InboundBatches() => Ok(await service.GetInboundBatchesAsync());
+    public async Task<IActionResult> InboundBatches([FromQuery] Guid? warehouseId) =>
+        Ok(await service.GetInboundBatchesAsync(CurrentUserId, warehouseId));
+
+    [HttpGet("intake-traces")]
+    public async Task<IActionResult> IntakeTraces([FromQuery] Guid? warehouseId) =>
+        Ok(await service.GetIntakeTracesAsync(CurrentUserId, warehouseId));
+
+    [HttpPost("areas")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> CreateArea(SaveWarehouseAreaDto dto) =>
+        Ok(new { id = await service.CreateAreaAsync(CurrentUserId, dto) });
+
+    [HttpPut("areas/{areaId:guid}")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> UpdateArea(Guid areaId, SaveWarehouseAreaDto dto)
+    { await service.UpdateAreaAsync(CurrentUserId, areaId, dto); return NoContent(); }
+
+    [HttpDelete("areas/{areaId:guid}")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> DeleteArea(Guid areaId)
+    { await service.DeleteAreaAsync(CurrentUserId, areaId); return NoContent(); }
+
+    [HttpPost("groups")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> CreateGroup(SaveWarehouseGroupDto dto) =>
+        Ok(new { id = await service.CreateGroupAsync(CurrentUserId, dto) });
+
+    [HttpPut("groups/{groupId:guid}")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> UpdateGroup(Guid groupId, SaveWarehouseGroupDto dto)
+    { await service.UpdateGroupAsync(CurrentUserId, groupId, dto); return NoContent(); }
+
+    [HttpDelete("groups/{groupId:guid}")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> DeleteGroup(Guid groupId)
+    { await service.DeleteGroupAsync(CurrentUserId, groupId); return NoContent(); }
+
+    [HttpPost("locations")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> CreateLocation(SaveStorageLocationDto dto) =>
+        Ok(new { id = await service.CreateLocationAsync(CurrentUserId, dto) });
+
+    [HttpPut("locations/{locationId:guid}")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> UpdateLocation(Guid locationId, SaveStorageLocationDto dto)
+    { await service.UpdateLocationAsync(CurrentUserId, locationId, dto); return NoContent(); }
+
+    [HttpDelete("locations/{locationId:guid}")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> DeleteLocation(Guid locationId)
+    { await service.DeleteLocationAsync(CurrentUserId, locationId); return NoContent(); }
 
     [HttpGet("batches/{batchId:guid}")]
     public async Task<IActionResult> Batch(Guid batchId)
@@ -39,12 +91,12 @@ public class WarehouseOperationsController(IWarehouseOperationsService service) 
     { await service.PutawayAsync(CurrentUserId, batchId, dto); return NoContent(); }
 
     [HttpGet("inventory")]
-    public async Task<IActionResult> Inventory([FromQuery] string? search) =>
-        Ok(await service.GetInventoryAsync(search));
+    public async Task<IActionResult> Inventory([FromQuery] Guid? warehouseId, [FromQuery] string? search) =>
+        Ok(await service.GetInventoryAsync(CurrentUserId, warehouseId, search));
 
     [HttpGet("transactions")]
-    public async Task<IActionResult> Transactions([FromQuery] string? type) =>
-        Ok(await service.GetTransactionsAsync(type));
+    public async Task<IActionResult> Transactions([FromQuery] Guid? warehouseId, [FromQuery] string? type) =>
+        Ok(await service.GetTransactionsAsync(CurrentUserId, warehouseId, type));
 
     [HttpPost("inventory/{inventoryId:guid}/issue")]
     public async Task<IActionResult> Issue(Guid inventoryId, IssueInventoryDto dto)

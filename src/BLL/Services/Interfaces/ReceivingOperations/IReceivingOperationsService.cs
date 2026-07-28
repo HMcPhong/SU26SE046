@@ -21,6 +21,8 @@ public interface IReceivingOperationsService
     Task StartBatchAsync(Guid staffId, Guid batchId);
     Task CompleteShiftAsync(Guid staffId, Guid shiftId);
     Task ConfirmPickupAsync(Guid staffId, Guid batchId, Guid requestId, ConfirmPickupDto dto);
+    Task<WarehouseDropOffBoardDto> GetMyWarehouseDropOffsAsync(Guid staffId);
+    Task ConfirmWarehouseDropOffAsync(Guid staffId, Guid requestId, ConfirmPickupDto dto);
     Task RescheduleAsync(Guid staffId, Guid batchId, Guid requestId, ReschedulePickupDto dto);
     Task RejectAsync(Guid staffId, Guid batchId, Guid requestId, RejectPickupDto dto);
     Task CompleteBatchAsync(Guid staffId, Guid batchId);
