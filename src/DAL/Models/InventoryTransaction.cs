@@ -11,7 +11,10 @@ namespace DAL.Models
         public Guid? ReferenceId { get; set; }
         public string Status { get; set; } = string.Empty;
         public string? Notes { get; set; }
+        public Guid PerformedByStaffId { get; set; }
+        public DateTime PerformedAt { get; set; }
         public virtual Warehouse Warehouse { get; set; } = null!;
+        public virtual User PerformedByStaff { get; set; } = null!;
         public virtual ICollection<TransactionItem> Items { get; set; } = new List<TransactionItem>();
     }
 }

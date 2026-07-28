@@ -4,6 +4,7 @@ using DAL;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260725085533_AddConfigurableClassificationCategories")]
+    partial class AddConfigurableClassificationCategories
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -1076,11 +1079,10 @@ namespace DAL.Migrations
 
                     b.HasIndex("ReceivingTeamId");
 
-                    b.HasIndex("WarehouseId");
+                    b.HasIndex("ShiftId")
+                        .IsUnique();
 
-                    b.HasIndex("ShiftId", "ReceivingTeamId")
-                        .IsUnique()
-                        .HasFilter("[ReceivingTeamId] IS NOT NULL AND [IsActive] = 1");
+                    b.HasIndex("WarehouseId");
 
                     b.ToTable("IntakeBatches");
                 });
@@ -2608,8 +2610,8 @@ namespace DAL.Migrations
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("DAL.Models.Shift", "Shift")
-                        .WithMany("IntakeBatches")
-                        .HasForeignKey("ShiftId")
+                        .WithOne("IntakeBatch")
+                        .HasForeignKey("DAL.Models.IntakeBatch", "ShiftId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
@@ -3081,7 +3083,7 @@ namespace DAL.Migrations
 
             modelBuilder.Entity("DAL.Models.Shift", b =>
                 {
-                    b.Navigation("IntakeBatches");
+                    b.Navigation("IntakeBatch");
 
                     b.Navigation("PickupAssignments");
 

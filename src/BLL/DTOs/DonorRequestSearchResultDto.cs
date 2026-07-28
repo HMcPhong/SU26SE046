@@ -10,6 +10,8 @@ namespace BLL.DTOs
 
         public string PhoneNumber { get; set; } = string.Empty;
 
+        public string DeliveryMethod { get; set; } = string.Empty;
+
         public string? Description { get; set; }
 
         public List<string>? ImageUrls { get; set; }

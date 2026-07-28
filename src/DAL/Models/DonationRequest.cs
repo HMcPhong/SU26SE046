@@ -9,6 +9,12 @@ namespace DAL.Models
 
         public Guid WarehouseId { get; set; }
 
+        public string ContactName { get; set; } = string.Empty;
+
+        public string ContactPhoneNumber { get; set; } = string.Empty;
+
+        public string DeliveryMethod { get; set; } = "StaffPickup";
+
         public List<string>? ImageUrls { get; set; }
 
         public string? Description { get; set; }

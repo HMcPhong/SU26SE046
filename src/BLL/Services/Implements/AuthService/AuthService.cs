@@ -1,115 +1,188 @@
-﻿using BLL.DTOs;
-using BLL.Services.Interfaces.AuthService;
-using DAL.Models;
-using DAL.Repository;
-using Microsoft.Extensions.Configuration;
-using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
+using BLL.DTOs;
+using BLL.Services.Interfaces.AuthService;
+using DAL;
+using DAL.Models;
+using DAL.Repository;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.IdentityModel.Tokens;
 
-namespace BLL.Services.Implements.AuthService
+namespace BLL.Services.Implements.AuthService;
+
+public partial class AuthService(
+    IUnitOfWork unitOfWork, AppDbContext dbContext, IConfiguration configuration,
+    IEmailVerificationSender emailSender, ISmsVerificationSender smsSender) : IAuthService
 {
-    public class AuthService : IAuthService
+    private const string EmailChannel = "Email";
+    private const string SmsChannel = "Sms";
+
+    public async Task<AuthResponse> LoginAsync(LoginRequest request)
     {
-        private readonly IUnitOfWork _unitOfWork;
-        private readonly IConfiguration _configuration;
-        public AuthService(IUnitOfWork unitOfWork, IConfiguration configuration)
+        var name = request.UserName.Trim().ToLowerInvariant();
+        var user = await unitOfWork.UserRepository.GetWithConditionAsync(
+            x => x.UserName.ToLower() == name, false, x => x.Role);
+        if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+            throw new InvalidOperationException("Invalid username or password");
+        if ((!user.EmailConfirmed && !user.PhoneNumberConfirmed) || user.UserStatus != "Active")
+            throw new InvalidOperationException("Account verification is incomplete. Please verify your email or phone number.");
+
+        return new AuthResponse
         {
-            _unitOfWork = unitOfWork;
-            _configuration = configuration;
-        }
-        public async Task<AuthResponse> LoginAsync(LoginRequest request)
-        {
-            var user = await _unitOfWork.UserRepository.GetWithConditionAsync(
-                x => x.UserName == request.UserName,
-                false,
-                x => x.Role);
-
-            if (user == null)
-            {
-                throw new Exception("Invalid username or password");
-            }
-
-            bool validPassword = BCrypt.Net.BCrypt.Verify(
-                request.Password,
-                user.PasswordHash);
-
-            if (!validPassword)
-            {
-                throw new Exception("Invalid username or password");
-            }
-
-            string token = GenerateToken(user);
-
-            return new AuthResponse
-            {
-                Token = token,
-                ExpiredAt = DateTime.UtcNow.AddHours(2),
-                UserId = user.Id,
-                FullName = user.FullName,
-                UserName = user.UserName,
-                AvatarUrl = user.AvatarUrl,
-                Role = user.Role.RoleName
-            };
-        }
-
-        public async Task RegisterAsync(RegisterRequest request)
-        {
-            var existedUser =
-           await _unitOfWork.UserRepository.GetWithConditionAsync(
-               x => x.UserName == request.UserName);
-
-            if (existedUser != null)
-            {
-                throw new Exception("Username already exists");
-            }
-
-            var donorRole =
-                await _unitOfWork.RoleRepository.GetWithConditionAsync(
-                    x => x.RoleName == "Donor");
-
-            var user = new User
-            {
-                FullName = request.FullName,
-                UserName = request.UserName,
-                Email = request.Email,
-                PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password),
-                RoleId = donorRole.Id,
-                Address = request.Address,
-                PhoneNumber = request.PhoneNumber,
-                CreateAt = DateTime.UtcNow,
-            };
-
-            await _unitOfWork.UserRepository.AddAsync(user);
-            await _unitOfWork.SaveChangeAsync();
-        }
-
-        private string GenerateToken(User user)
-        {
-            var claims = new List<Claim>
-            {
-                new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                new Claim(ClaimTypes.Name, user.FullName),
-                new Claim(ClaimTypes.Role, user.Role.RoleName),
-                new Claim("username", user.UserName)
-            };
-
-            var key = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(_configuration["Jwt:Key"]));
-
-            var credentials = new SigningCredentials(
-                key,
-                SecurityAlgorithms.HmacSha256);
-
-            var token = new JwtSecurityToken(
-                issuer: _configuration["Jwt:Issuer"],
-                audience: _configuration["Jwt:Audience"],
-                claims: claims,
-                expires: DateTime.UtcNow.AddHours(2),
-                signingCredentials: credentials);
-
-            return new JwtSecurityTokenHandler().WriteToken(token);
-        }
+            Token = GenerateToken(user), ExpiredAt = DateTime.UtcNow.AddHours(2),
+            UserId = user.Id, FullName = user.FullName, UserName = user.UserName,
+            AvatarUrl = user.AvatarUrl, Role = user.Role.RoleName
+        };
     }
+
+    public async Task<RegisterResponse> RegisterAsync(RegisterRequest request)
+    {
+        NormalizeAndValidate(request);
+        var verificationChannel = NormalizeChannel(request.VerificationChannel);
+        var name = request.UserName.ToLowerInvariant();
+        var email = request.Email.ToLowerInvariant();
+        if (await dbContext.Users.AnyAsync(x => x.UserName.ToLower() == name))
+            throw new InvalidOperationException("Username already exists.");
+        if (await dbContext.Users.AnyAsync(x => x.Email.ToLower() == email))
+            throw new InvalidOperationException("Email already exists.");
+        if (await dbContext.Users.AnyAsync(x => x.PhoneNumber == request.PhoneNumber))
+            throw new InvalidOperationException("Phone number already exists.");
+
+        var role = await unitOfWork.RoleRepository.GetWithConditionAsync(x => x.RoleName == "Donor")
+            ?? throw new InvalidOperationException("Donor role is not configured.");
+        var user = new User
+        {
+            FullName = request.FullName, UserName = request.UserName, Email = request.Email,
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password), RoleId = role.Id,
+            Address = request.Address, PhoneNumber = request.PhoneNumber,
+            UserStatus = "PendingVerification", EmailConfirmed = false,
+            PhoneNumberConfirmed = false, IsActive = false, CreateAt = DateTime.UtcNow
+        };
+        dbContext.Users.Add(user);
+        var code = CreateCode(user.Id, verificationChannel);
+        await dbContext.SaveChangesAsync();
+        try
+        {
+            if (verificationChannel == EmailChannel)
+                await emailSender.SendAsync(user.Email, user.FullName, code);
+            else
+                await smsSender.SendAsync(user.PhoneNumber, code);
+        }
+        catch
+        {
+            throw new InvalidOperationException("Account was created, but verification delivery failed. Please resend the verification codes.");
+        }
+        return new RegisterResponse(user.Id,
+            $"Registration successful. A verification code was sent by {verificationChannel}.");
+    }
+
+    public async Task<VerificationResponse> VerifyRegistrationAsync(VerifyRegistrationRequest request)
+    {
+        var channel = NormalizeChannel(request.Channel);
+        if (!SixDigitCodeRegex().IsMatch(request.Code ?? ""))
+            throw new InvalidOperationException("Verification code must contain exactly 6 digits.");
+        var user = await dbContext.Users.FindAsync(request.UserId)
+            ?? throw new InvalidOperationException("Account was not found.");
+        var verification = await dbContext.UserVerificationCodes
+            .Where(x => x.UserId == request.UserId && x.Channel == channel && x.IsActive == true)
+            .OrderByDescending(x => x.CreateAt).FirstOrDefaultAsync()
+            ?? throw new InvalidOperationException("No active verification code was found.");
+        if (verification.ExpiresAt <= DateTime.UtcNow)
+            throw new InvalidOperationException("Verification code has expired. Please request a new code.");
+        if (verification.FailedAttempts >= 5)
+            throw new InvalidOperationException("Too many failed attempts. Please request a new code.");
+        if (!CryptographicOperations.FixedTimeEquals(
+                Convert.FromHexString(verification.CodeHash),
+                Convert.FromHexString(HashCode(request.Code))))
+        {
+            verification.FailedAttempts++;
+            await dbContext.SaveChangesAsync();
+            throw new InvalidOperationException("Verification code is incorrect.");
+        }
+
+        verification.VerifiedAt = DateTime.UtcNow;
+        verification.IsActive = false;
+        if (channel == EmailChannel) user.EmailConfirmed = true;
+        else user.PhoneNumberConfirmed = true;
+        var activated = user.EmailConfirmed || user.PhoneNumberConfirmed;
+        if (activated) { user.UserStatus = "Active"; user.IsActive = true; }
+        user.UpdateAt = DateTime.UtcNow;
+        await dbContext.SaveChangesAsync();
+        return new VerificationResponse(user.EmailConfirmed, user.PhoneNumberConfirmed, activated,
+            activated ? "Account verification completed." : $"{channel} verification failed.");
+    }
+
+    public async Task ResendVerificationAsync(ResendVerificationRequest request)
+    {
+        var channel = NormalizeChannel(request.Channel);
+        var user = await dbContext.Users.FindAsync(request.UserId)
+            ?? throw new InvalidOperationException("Account was not found.");
+        if (channel == EmailChannel ? user.EmailConfirmed : user.PhoneNumberConfirmed)
+            throw new InvalidOperationException($"{channel} is already verified.");
+        var latest = await dbContext.UserVerificationCodes.Where(x => x.UserId == request.UserId && x.Channel == channel)
+            .OrderByDescending(x => x.CreateAt).FirstOrDefaultAsync();
+        if (latest?.CreateAt > DateTime.UtcNow.AddMinutes(-1))
+            throw new InvalidOperationException("Please wait one minute before requesting another code.");
+        await dbContext.UserVerificationCodes
+            .Where(x => x.UserId == request.UserId && x.Channel == channel && x.IsActive == true)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.IsActive, false));
+        var code = CreateCode(user.Id, channel);
+        await dbContext.SaveChangesAsync();
+        if (channel == EmailChannel) await emailSender.SendAsync(user.Email, user.FullName, code);
+        else await smsSender.SendAsync(user.PhoneNumber, code);
+    }
+
+    private string CreateCode(Guid userId, string channel)
+    {
+        var code = RandomNumberGenerator.GetInt32(1_000_000).ToString("D6");
+        dbContext.UserVerificationCodes.Add(new UserVerificationCode
+        {
+            UserId = userId, Channel = channel, CodeHash = HashCode(code),
+            ExpiresAt = DateTime.UtcNow.AddMinutes(5), CreateAt = DateTime.UtcNow, IsActive = true
+        });
+        return code;
+    }
+    private static string HashCode(string code) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(code)));
+    private static string NormalizeChannel(string channel) => channel?.Trim().ToLowerInvariant() switch
+    {
+        "email" => EmailChannel, "sms" => SmsChannel,
+        _ => throw new InvalidOperationException("Channel must be Email or Sms.")
+    };
+    private static void NormalizeAndValidate(RegisterRequest r)
+    {
+        r.FullName = r.FullName.Trim(); r.UserName = r.UserName.Trim();
+        r.Email = r.Email.Trim().ToLowerInvariant();
+        r.PhoneNumber = Regex.Replace(r.PhoneNumber ?? "", @"[\s.\-()]", "");
+        r.Address = r.Address.Trim();
+        if (!UserNameRegex().IsMatch(r.UserName))
+            throw new InvalidOperationException("Username must be 3-30 characters and contain only letters, numbers, dots or underscores.");
+        if (!EmailRegex().IsMatch(r.Email) || r.Email.Length > 254)
+            throw new InvalidOperationException("Email format is invalid.");
+        if (!VietnamPhoneRegex().IsMatch(r.PhoneNumber))
+            throw new InvalidOperationException("Phone number must be a valid Vietnamese mobile number.");
+        if (r.PhoneNumber.StartsWith("+84")) r.PhoneNumber = "0" + r.PhoneNumber[3..];
+        if (r.FullName.Length is < 2 or > 100) throw new InvalidOperationException("Full name must contain 2-100 characters.");
+        if (r.Password.Length < 8 || !r.Password.Any(char.IsUpper) || !r.Password.Any(char.IsDigit) ||
+            r.Password.All(char.IsLetterOrDigit))
+            throw new InvalidOperationException("Password must be at least 8 characters and include an uppercase letter, a number and a special character.");
+    }
+
+    private string GenerateToken(User user)
+    {
+        var claims = new List<Claim> { new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+            new(ClaimTypes.Name, user.FullName), new(ClaimTypes.Role, user.Role.RoleName), new("username", user.UserName) };
+        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Key"]!));
+        var token = new JwtSecurityToken(configuration["Jwt:Issuer"], configuration["Jwt:Audience"], claims,
+            expires: DateTime.UtcNow.AddHours(2), signingCredentials: new SigningCredentials(key, SecurityAlgorithms.HmacSha256));
+        return new JwtSecurityTokenHandler().WriteToken(token);
+    }
+
+    [GeneratedRegex(@"^[A-Za-z0-9._]{3,30}$")] private static partial Regex UserNameRegex();
+    [GeneratedRegex(@"^[^@\s]+@[^@\s]+\.[^@\s]+$", RegexOptions.IgnoreCase)] private static partial Regex EmailRegex();
+    [GeneratedRegex(@"^(?:\+84|0)(?:3|5|7|8|9)\d{8}$")] private static partial Regex VietnamPhoneRegex();
+    [GeneratedRegex(@"^\d{6}$")] private static partial Regex SixDigitCodeRegex();
 }

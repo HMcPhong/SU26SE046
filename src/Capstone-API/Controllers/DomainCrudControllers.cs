@@ -9,6 +9,7 @@ namespace Capstone_API.Controllers;
 public class WarehouseController(ICrudService<Warehouse> service) : CrudControllerBase<Warehouse>(service);
 
 [Route("api/categories")]
+[Authorize(Roles = "Manager")]
 public class CategoryController(ICrudService<Category> service) : CrudControllerBase<Category>(service);
 
 [Route("api/vouchers")]

@@ -10,6 +10,12 @@ using BLL.Services.Interfaces.WarehouseService;
 using BLL.Services.Interfaces.ReceivingOperations;
 using BLL.Services.Implements.ClassificationOperations;
 using BLL.Services.Interfaces.ClassificationOperations;
+using BLL.Services.Implements.WarehouseOperations;
+using BLL.Services.Interfaces.WarehouseOperations;
+using BLL.Services.Implements.ManagerDashboard;
+using BLL.Services.Interfaces.ManagerDashboard;
+using BLL.Services.Implements.ManagerAccounts;
+using BLL.Services.Interfaces.ManagerAccounts;
 using DAL;
 using DAL.Repository;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -27,10 +33,15 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped(typeof(ICrudService<>), typeof(CrudService<>));
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IEmailVerificationSender, EmailVerificationSender>();
+builder.Services.AddHttpClient<ISmsVerificationSender, SmsVerificationSender>();
 builder.Services.AddScoped<IDonorRequestService, DonorRequestService>();
 builder.Services.AddScoped<IWarehouseService, WarehouseService>();
 builder.Services.AddScoped<IReceivingOperationsService, ReceivingOperationsService>();
 builder.Services.AddScoped<IClassificationOperationsService, ClassificationOperationsService>();
+builder.Services.AddScoped<IWarehouseOperationsService, WarehouseOperationsService>();
+builder.Services.AddScoped<IManagerDashboardService, ManagerDashboardService>();
+builder.Services.AddScoped<IManagerAccountService, ManagerAccountService>();
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 

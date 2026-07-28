@@ -15,5 +15,5 @@ public class Shift : BaseEntity
     public virtual Warehouse Warehouse { get; set; } = null!;
     public virtual ICollection<OperationalTeam> Teams { get; set; } = new List<OperationalTeam>();
     public virtual ICollection<PickupAssignment> PickupAssignments { get; set; } = new List<PickupAssignment>();
-    public virtual IntakeBatch? IntakeBatch { get; set; }
+    public virtual ICollection<IntakeBatch> IntakeBatches { get; set; } = new List<IntakeBatch>();
 }

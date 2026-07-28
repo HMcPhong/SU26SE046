@@ -1,10 +1,11 @@
-﻿using BLL.DTOs;
+using BLL.DTOs;
 
-namespace BLL.Services.Interfaces.AuthService
+namespace BLL.Services.Interfaces.AuthService;
+
+public interface IAuthService
 {
-    public interface IAuthService
-    {
-        Task RegisterAsync(RegisterRequest request);
-        Task<AuthResponse> LoginAsync(LoginRequest request);
-    }
+    Task<RegisterResponse> RegisterAsync(RegisterRequest request);
+    Task<AuthResponse> LoginAsync(LoginRequest request);
+    Task<VerificationResponse> VerifyRegistrationAsync(VerifyRegistrationRequest request);
+    Task ResendVerificationAsync(ResendVerificationRequest request);
 }

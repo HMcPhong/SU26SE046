@@ -18,8 +18,18 @@ namespace Capstone_API.Controllers
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterRequest request)
         {
-            await _authService.RegisterAsync(request);
-            return Ok();
+            return Ok(await _authService.RegisterAsync(request));
+        }
+
+        [HttpPost("verify-registration")]
+        public async Task<IActionResult> VerifyRegistration(VerifyRegistrationRequest request) =>
+            Ok(await _authService.VerifyRegistrationAsync(request));
+
+        [HttpPost("resend-verification")]
+        public async Task<IActionResult> ResendVerification(ResendVerificationRequest request)
+        {
+            await _authService.ResendVerificationAsync(request);
+            return Ok(new { message = "A new verification code was sent." });
         }
 
         [HttpPost("login")]

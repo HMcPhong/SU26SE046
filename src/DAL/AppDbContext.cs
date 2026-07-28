@@ -7,6 +7,7 @@ namespace DAL
     {
         public DbSet<Role> Roles => Set<Role>();
         public DbSet<User> Users => Set<User>();
+        public DbSet<UserVerificationCode> UserVerificationCodes => Set<UserVerificationCode>();
         public DbSet<Cart> Carts => Set<Cart>();
         public DbSet<CartItem> CartItems => Set<CartItem>();
         public DbSet<Category> Categories => Set<Category>();
@@ -31,6 +32,7 @@ namespace DAL
         public DbSet<Warehouse> Warehouses => Set<Warehouse>();
         public DbSet<WarehouseArea> WarehouseAreas => Set<WarehouseArea>();
         public DbSet<AreaGroup> AreaGroups => Set<AreaGroup>();
+        public DbSet<StorageLocation> StorageLocations => Set<StorageLocation>();
         public DbSet<Shift> Shifts => Set<Shift>();
         public DbSet<OperationalTeam> OperationalTeams => Set<OperationalTeam>();
         public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
@@ -49,6 +51,21 @@ namespace DAL
             base.OnModelCreating(modelBuilder);
 
             modelBuilder.Entity<User>().HasOne(u => u.Role).WithMany(r => r.Users).HasForeignKey(u => u.RoleId);
+            modelBuilder.Entity<User>().HasIndex(x => x.UserName);
+            modelBuilder.Entity<User>().HasIndex(x => x.Email);
+            modelBuilder.Entity<User>().HasIndex(x => x.PhoneNumber);
+            modelBuilder.Entity<UserVerificationCode>()
+                .HasIndex(x => new { x.UserId, x.Channel, x.IsActive });
+            modelBuilder.Entity<UserVerificationCode>()
+                .HasOne(x => x.User)
+                .WithMany(x => x.VerificationCodes)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Category>().HasIndex(x => x.Code).IsUnique();
+            modelBuilder.Entity<Category>().HasIndex(x => new { x.Type, x.ParentId, x.Name }).IsUnique();
+            modelBuilder.Entity<Category>().Property(x => x.Code).HasMaxLength(80);
+            modelBuilder.Entity<Category>().Property(x => x.Type).HasMaxLength(40);
 
             modelBuilder.Entity<Role>().HasData(
                 new Role
@@ -114,6 +131,8 @@ namespace DAL
                     PasswordHash = "$2a$11$TCC0aSnsg3xBXrySfOn18OsY5Bme6jTvPnd6kVhAfR/XJIFODASVa",
                     RoleId = RoleSeedData.ReceivingStaffId,
                     UserStatus = "Active",
+                    EmailConfirmed = true,
+                    PhoneNumberConfirmed = true,
                     IsActive = true,
                     CreateAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
                 }
@@ -139,9 +158,14 @@ namespace DAL
 
             modelBuilder.Entity<IntakeBatch>()
                 .HasOne(x => x.Shift)
-                .WithOne(x => x.IntakeBatch)
-                .HasForeignKey<IntakeBatch>(x => x.ShiftId)
+                .WithMany(x => x.IntakeBatches)
+                .HasForeignKey(x => x.ShiftId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<IntakeBatch>()
+                .HasIndex(x => new { x.ShiftId, x.ReceivingTeamId })
+                .IsUnique()
+                .HasFilter("[ReceivingTeamId] IS NOT NULL AND [IsActive] = 1");
 
             modelBuilder.Entity<IntakeBatch>()
                 .HasOne(x => x.ReceivingTeam)
@@ -182,6 +206,44 @@ namespace DAL
             modelBuilder.Entity<ClassifiedBatch>()
                 .HasIndex(x => x.GroupKey)
                 .IsUnique();
+
+            modelBuilder.Entity<StorageLocation>()
+                .HasIndex(x => new { x.WarehouseId, x.LocationCode })
+                .IsUnique();
+
+            modelBuilder.Entity<Inventory>()
+                .HasIndex(x => x.Sku)
+                .IsUnique();
+
+            modelBuilder.Entity<Inventory>()
+                .HasOne(x => x.StorageLocation)
+                .WithMany(x => x.Inventories)
+                .HasForeignKey(x => x.StorageLocationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<Inventory>()
+                .HasOne(x => x.ClassifiedBatch)
+                .WithMany()
+                .HasForeignKey(x => x.ClassifiedBatchId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<InventoryTransaction>()
+                .HasOne(x => x.PerformedByStaff)
+                .WithMany()
+                .HasForeignKey(x => x.PerformedByStaffId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<TransactionItem>()
+                .HasOne(x => x.SourceLocation)
+                .WithMany()
+                .HasForeignKey(x => x.SourceLocationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<TransactionItem>()
+                .HasOne(x => x.DestinationLocation)
+                .WithMany()
+                .HasForeignKey(x => x.DestinationLocationId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<ClassificationResult>()
                 .HasOne(x => x.Criteria)
