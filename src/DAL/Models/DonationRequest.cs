@@ -5,6 +5,8 @@ namespace DAL.Models
 {
     public class DonationRequest : BaseEntity
     {
+        public string RequestCode { get; set; } = string.Empty;
+
         public Guid DonorId { get; set; }
 
         public Guid WarehouseId { get; set; }
@@ -42,5 +44,8 @@ namespace DAL.Models
 
         public virtual ICollection<PickupAssignment> PickupAssignments { get; set; }
             = new List<PickupAssignment>();
+
+        public virtual ICollection<ClassifiedBatchDonationRequest> ClassifiedBatchDonationRequests { get; set; }
+            = new List<ClassifiedBatchDonationRequest>();
     }
 }

@@ -481,7 +481,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
                 && !assignedIds.Contains(x.Id))
             .OrderBy(x => x.PickupDate).ThenBy(x => x.CreateAt)
             .Select(x => new DispatchRequestDto(
-                x.Id, $"DR-{x.CreateAt!.Value.Year}-{x.Id.ToString().Substring(0, 8).ToUpper()}",
+                x.Id, x.RequestCode,
                 x.ContactName, x.ContactPhoneNumber, x.DeliveryMethod, x.PickupAddress,
                 x.PickupDate, x.WarehouseId, x.Warehouse.WarehouseName))
             .ToListAsync();
@@ -538,7 +538,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
                 var batch = x.IntakeBatches.FirstOrDefault(b => b.ReceivingTeamId == team.Id);
                 var requests = batch?.PickupAssignments.OrderBy(a => a.RouteOrder).Select(a =>
                     new ManagerAssignedRequestDto(a.DonorRequestId,
-                        $"DR-{a.DonorRequest.CreateAt!.Value.Year}-{a.DonorRequestId.ToString()[..8].ToUpperInvariant()}",
+                        a.DonorRequest.RequestCode,
                         a.DonorRequest.ContactName, a.DonorRequest.ContactPhoneNumber,
                         a.DonorRequest.PickupAddress, a.DonorRequest.PickupDate,
                         a.DonorRequest.DeliveryMethod, a.Status, a.RouteOrder)).ToList() ?? [];
@@ -736,7 +736,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             .OrderBy(request => request.PickupDate).ThenBy(request => request.CreateAt)
             .Select(request => new WarehouseDropOffItemDto(
                 request.Id, request.WarehouseId,
-                $"DR-{request.CreateAt!.Value.Year}-{request.Id.ToString().Substring(0, 8).ToUpper()}",
+                request.RequestCode,
                 request.ContactName, request.ContactPhoneNumber, request.PickupAddress,
                 request.PickupDate!.Value, request.Description ?? string.Empty,
                 request.EstimateWeight, request.Status.ToString(), request.ImageUrls))
@@ -907,7 +907,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         Requests = batch.PickupAssignments.OrderBy(x => x.RouteOrder).Select(x => new ReceivingRequestDto
         {
             Id = x.DonorRequestId, BatchId = batch.Id,
-            Code = $"DR-{x.DonorRequest.CreateAt?.Year}-{x.DonorRequestId.ToString()[..8].ToUpperInvariant()}",
+            Code = x.DonorRequest.RequestCode,
             DonorName = x.DonorRequest.ContactName, PhoneNumber = x.DonorRequest.ContactPhoneNumber,
             PickupAddress = x.DonorRequest.PickupAddress, Description = x.DonorRequest.Description ?? string.Empty,
             EstimateWeight = x.DonorRequest.EstimateWeight, ActualWeight = x.DonorRequest.ActualWeight,

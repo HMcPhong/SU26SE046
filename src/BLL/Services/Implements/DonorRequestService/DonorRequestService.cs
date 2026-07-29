@@ -49,10 +49,13 @@ namespace BLL.Services.Implements.DonorRequestService
                 (string.IsNullOrWhiteSpace(dto.PickupAddress) || !dto.PickupDate.HasValue))
                 throw new InvalidOperationException("Pickup address and pickup date are required for staff pickup.");
 
+            var requestId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
             var request =
                 new DonationRequest
                 {
-                    Id = Guid.NewGuid(),
+                    Id = requestId,
+                    RequestCode = BuildRequestCode(requestId, now),
                     DonorId = donorId,
                     WarehouseId = dto.WarehouseId,
                     ContactName = contactName,
@@ -67,7 +70,7 @@ namespace BLL.Services.Implements.DonorRequestService
                     PickupAddress = deliveryMethod == "StaffPickup"
                         ? dto.PickupAddress!.Trim()
                         : warehouse.Address,
-                    CreateAt = DateTime.UtcNow,
+                    CreateAt = now,
                     Status = deliveryMethod == "StaffPickup"
                         ? DonationRequestStatus.WaitingReceivingStaff
                         : DonationRequestStatus.PendingStaffAssign
@@ -257,7 +260,7 @@ namespace BLL.Services.Implements.DonorRequestService
                 .Select(x => new DonorRequestSearchResultDto
                 {
                     Id = x.Id,
-                    Code = "DR-" + x.CreateAt.GetValueOrDefault().Year + "-" + x.Id.ToString().Substring(0, 8).ToUpper(),
+                    Code = x.RequestCode,
                     DonorName = x.ContactName,
                     PhoneNumber = x.ContactPhoneNumber,
                     DeliveryMethod = x.DeliveryMethod,
@@ -282,6 +285,9 @@ namespace BLL.Services.Implements.DonorRequestService
             return status == DonationRequestStatus.PendingStaffAssign
                    || status == DonationRequestStatus.WaitingReceivingStaff;
         }
+
+        private static string BuildRequestCode(Guid id, DateTime createdAt) =>
+            $"DR-{createdAt.Year}-{id.ToString("N")[..8].ToUpperInvariant()}";
 
         private static string GetStatusText(DonationRequestStatus status)
         {

@@ -20,7 +20,7 @@ public record WarehouseInboundBatchDto(Guid Id, string BatchCode, DateTime Class
     string Size, string ConditionGrade, string ProcessingDirection, int ExpectedItemCount,
     decimal ExpectedWeightKg, string Status, DateTime? SentAt, DateTime? ReceivedAt,
     decimal? ReceivedWeightKg, int? ReceivedItemCount, string? ReceiptNotes,
-    IReadOnlyList<ClassificationItemDto> Items);
+    IReadOnlyList<string> DonationRequestCodes, IReadOnlyList<ClassificationItemDto> Items);
 
 public record ConfirmWarehouseReceiptDto(decimal ActualWeightKg, int ActualItemCount,
     bool SealIntact, string? DiscrepancyNotes);
@@ -40,12 +40,12 @@ public record WarehouseInventoryDto(Guid Id, string Sku, Guid ClassifiedBatchId,
     string ClothingType, string Gender, string TargetUser, string Size, string ConditionGrade,
     string ProcessingDirection, int Quantity, int ReservedQuantity, int AvailableQuantity,
     decimal TotalWeightKg, decimal ReservedWeightKg, decimal AvailableWeightKg, string Status,
-    DateTime? StoredAt);
+    DateTime? StoredAt, IReadOnlyList<string> DonationRequestCodes);
 
 public record WarehouseTransactionItemDto(Guid Id, Guid InventoryId, string Sku,
     string? ClassifiedBatchCode, int Quantity, decimal WeightKg, int QuantityBefore,
     int QuantityAfter, decimal WeightBefore, decimal WeightAfter, string? SourceLocationCode,
-    string? DestinationLocationCode, string? Notes);
+    string? DestinationLocationCode, string? Notes, IReadOnlyList<string> DonationRequestCodes);
 
 public record WarehouseTransactionDto(Guid Id, string TransactionCode, string TransactionType,
     string? ReferenceType, Guid? ReferenceId, string Status, string? Notes,
@@ -56,7 +56,8 @@ public record WarehouseIntakeTraceDto(Guid Id, string BatchCode, DateTime Intake
     IReadOnlyList<WarehouseClassifiedBatchTraceDto> ClassifiedBatches);
 public record WarehouseClassifiedBatchTraceDto(Guid Id, string BatchCode, string Status,
     string ClothingType, string ConditionGrade, string ProcessingDirection,
-    int ItemCount, decimal WeightKg, string? InventorySku, string? LocationCode);
+    int ItemCount, decimal WeightKg, string? InventorySku, string? LocationCode,
+    IReadOnlyList<string> DonationRequestCodes);
 
 public record SaveWarehouseAreaDto(Guid WarehouseId, string AreaName, string? Description,
     decimal CapacityKg);

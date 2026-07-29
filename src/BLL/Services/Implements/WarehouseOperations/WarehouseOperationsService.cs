@@ -102,6 +102,8 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             .Include(x => x.IntakeBatchDonationRequests)
             .Include(x => x.ClassifiedItems.Where(i => i.IsActive != false))
                 .ThenInclude(x => x.ClassifiedBatch)
+                    .ThenInclude(x => x!.DonationRequestSources)
+                        .ThenInclude(x => x.DonationRequest)
             .Where(x => x.WarehouseId == warehouseId && x.IsActive != false)
             .OrderByDescending(x => x.IntakeDate)
             .Take(200)
@@ -128,7 +130,9 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
                     return new WarehouseClassifiedBatchTraceDto(classified.Id, classified.BatchCode,
                         classified.Status, classified.ClothingType, Grade(classified.ConditionRating),
                         classified.ProcessingDirection, classified.TotalItem, classified.TotalWeight,
-                        inventory?.Sku, inventory?.StorageLocation?.LocationCode);
+                        inventory?.Sku, inventory?.StorageLocation?.LocationCode,
+                        classified.DonationRequestSources.Where(x => x.IsActive != false)
+                            .Select(x => x.DonationRequest.RequestCode).Distinct().OrderBy(x => x).ToList());
                 }).OrderBy(x => x.BatchCode).ToList())).ToList();
     }
 
@@ -394,9 +398,15 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             .FirstOrDefaultAsync(x => x.Id == batchId && x.IsActive != false)
             ?? throw new InvalidOperationException("Classified batch not found.");
         await EnsureDefaultLayoutAsync(batch.WarehouseId);
+        var requiredDirection = ProcessingDirectionForGrade(batch.ConditionRating);
+        var requiredCapacity = batch.ReceivedWeight ?? batch.TotalWeight;
         var locations = await context.StorageLocations.AsNoTracking()
             .Include(x => x.Area)
-            .Where(x => x.WarehouseId == batch.WarehouseId && x.IsActive != false && x.Status != "Blocked")
+            .Where(x => x.WarehouseId == batch.WarehouseId
+                && x.IsActive != false
+                && x.Status != "Blocked"
+                && x.PreferredProcessingDirection == requiredDirection
+                && x.CapacityKg - x.CurrentWeightKg >= requiredCapacity)
             .ToListAsync();
         return locations.Select(x => MapLocation(x, batch)).OrderByDescending(x => x.MatchScore)
             .ThenBy(x => x.LocationCode).ToList();
@@ -419,6 +429,10 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             ?? throw new InvalidOperationException("Storage location not found.");
         if (location.Status == "Blocked")
             throw new InvalidOperationException("Storage location is blocked.");
+        var requiredDirection = ProcessingDirectionForGrade(batch.ConditionRating);
+        if (location.PreferredProcessingDirection != requiredDirection)
+            throw new InvalidOperationException(
+                $"Grade {Grade(batch.ConditionRating)} inventory must be stored in the {requiredDirection} area.");
         if (location.CapacityKg - location.CurrentWeightKg < inventory.TotalWeight)
             throw new InvalidOperationException("Storage location does not have enough remaining capacity.");
 
@@ -457,7 +471,9 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         {
             var term = search.Trim();
             query = query.Where(x => x.Sku.Contains(term) || x.ClothingType.Contains(term)
-                || (x.StorageLocation != null && x.StorageLocation.LocationCode.Contains(term)));
+                || (x.StorageLocation != null && x.StorageLocation.LocationCode.Contains(term))
+                || (x.ClassifiedBatch != null && x.ClassifiedBatch.DonationRequestSources
+                    .Any(source => source.DonationRequest.RequestCode.Contains(term))));
         }
         return await query.OrderBy(x => x.StorageLocation!.LocationCode).ThenBy(x => x.Sku)
             .Select(x => new WarehouseInventoryDto(x.Id, x.Sku, x.ClassifiedBatchId!.Value,
@@ -466,7 +482,37 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
                 x.FabricType, x.GarmentGroup, x.ClothingType, x.Gender, x.TargetUser, x.Size,
                 Grade(x.ConditionRating), x.ProcessingDirection, x.Quantity, x.ReservedQuantity,
                 x.Quantity - x.ReservedQuantity, x.TotalWeight, x.ReservedWeight,
-                x.TotalWeight - x.ReservedWeight, x.Status, x.ClassifiedBatch.StoredAt)).ToListAsync();
+                 x.TotalWeight - x.ReservedWeight, x.Status, x.ClassifiedBatch.StoredAt,
+                 x.ClassifiedBatch.DonationRequestSources.Where(source => source.IsActive != false)
+                    .Select(source => source.DonationRequest.RequestCode).Distinct().OrderBy(code => code).ToList()))
+            .ToListAsync();
+    }
+
+    public async Task<IReadOnlyList<WarehouseInventoryDto>> GetLocationInventoryAsync(
+        Guid userId, Guid locationId)
+    {
+        var location = await context.StorageLocations.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == locationId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Storage location not found.");
+        var accessibleWarehouseId = await ResolveWarehouseIdAsync(userId, location.WarehouseId);
+        if (accessibleWarehouseId != location.WarehouseId)
+            throw new UnauthorizedAccessException("This storage location belongs to another warehouse.");
+
+        return await context.Inventories.AsNoTracking()
+            .Include(x => x.ClassifiedBatch)
+            .Include(x => x.StorageLocation)!.ThenInclude(x => x!.Area)
+            .Where(x => x.StorageLocationId == locationId && x.IsActive != false)
+            .OrderBy(x => x.Sku)
+            .Select(x => new WarehouseInventoryDto(x.Id, x.Sku, x.ClassifiedBatchId!.Value,
+                x.ClassifiedBatch!.BatchCode, x.StorageLocation!.LocationCode,
+                x.StorageLocation.Area.AreaName, x.FabricType, x.GarmentGroup, x.ClothingType,
+                x.Gender, x.TargetUser, x.Size, Grade(x.ConditionRating), x.ProcessingDirection,
+                x.Quantity, x.ReservedQuantity, x.Quantity - x.ReservedQuantity,
+                x.TotalWeight, x.ReservedWeight, x.TotalWeight - x.ReservedWeight,
+                x.Status, x.ClassifiedBatch.StoredAt,
+                x.ClassifiedBatch.DonationRequestSources.Where(source => source.IsActive != false)
+                    .Select(source => source.DonationRequest.RequestCode).Distinct().OrderBy(code => code).ToList()))
+            .ToListAsync();
     }
 
     public async Task<IReadOnlyList<WarehouseTransactionDto>> GetTransactionsAsync(
@@ -476,6 +522,8 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         var query = context.InventoryTransactions.AsNoTracking()
             .Include(x => x.PerformedByStaff).Include(x => x.Items).ThenInclude(x => x.Inventory)
             .Include(x => x.Items).ThenInclude(x => x.ClassifiedBatch)
+                .ThenInclude(x => x!.DonationRequestSources)
+                    .ThenInclude(x => x.DonationRequest)
             .Include(x => x.Items).ThenInclude(x => x.SourceLocation)
             .Include(x => x.Items).ThenInclude(x => x.DestinationLocation)
             .Where(x => x.WarehouseId == warehouseId && x.IsActive != false);
@@ -486,7 +534,10 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             x.PerformedByStaff.FullName, x.Items.Select(i => new WarehouseTransactionItemDto(i.Id,
                 i.InventoryId, i.Inventory.Sku, i.ClassifiedBatch?.BatchCode, i.Quantity, i.Weight,
                 i.QuantityBefore, i.QuantityAfter, i.WeightBefore, i.WeightAfter,
-                i.SourceLocation?.LocationCode, i.DestinationLocation?.LocationCode, i.Notes)).ToList())).ToList();
+                i.SourceLocation?.LocationCode, i.DestinationLocation?.LocationCode, i.Notes,
+                i.ClassifiedBatch?.DonationRequestSources.Where(source => source.IsActive != false)
+                    .Select(source => source.DonationRequest.RequestCode).Distinct().OrderBy(code => code).ToList()
+                    ?? [])).ToList())).ToList();
     }
 
     public async Task IssueAsync(Guid staffId, Guid inventoryId, IssueInventoryDto dto)
@@ -524,6 +575,10 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         var destination = await context.StorageLocations.Include(x => x.Area).Include(x => x.Warehouse)
             .FirstOrDefaultAsync(x => x.Id == dto.DestinationLocationId && x.WarehouseId == inventory.WarehouseId && x.IsActive != false)
             ?? throw new InvalidOperationException("Destination location not found.");
+        var requiredDirection = ProcessingDirectionForGrade(inventory.ConditionRating);
+        if (destination.PreferredProcessingDirection != requiredDirection)
+            throw new InvalidOperationException(
+                $"Grade {Grade(inventory.ConditionRating)} inventory can only be moved within the {requiredDirection} area.");
         if (destination.CapacityKg - destination.CurrentWeightKg < inventory.TotalWeight)
             throw new InvalidOperationException("Destination location does not have enough capacity.");
         var sourceId = inventory.StorageLocationId;
@@ -545,6 +600,8 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
 
     private IQueryable<ClassifiedBatch> BatchQuery() => context.ClassifiedBatches.AsNoTracking()
         .Include(x => x.Items.Where(i => i.IsActive != false))
+        .Include(x => x.DonationRequestSources.Where(source => source.IsActive != false))
+            .ThenInclude(x => x.DonationRequest)
         .Where(x => x.IsActive != false);
 
     private async Task<Guid> ResolveWarehouseIdAsync(Guid userId, Guid? requestedWarehouseId)
@@ -705,7 +762,10 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         x.ClassificationDate, x.FabricType, x.GarmentGroup, x.ClothingType, x.Gender, x.TargetUser,
         x.Size, Grade(x.ConditionRating), x.ProcessingDirection, x.TotalItem, x.TotalWeight, x.Status,
         x.SentToWarehouseAt, x.WarehouseReceivedAt, x.ReceivedWeight, x.ReceivedItemCount,
-        x.WarehouseReceiptNotes, x.Items.OrderBy(i => i.ItemCode).Select(i =>
+        x.WarehouseReceiptNotes,
+        x.DonationRequestSources.Select(source => source.DonationRequest.RequestCode)
+            .Distinct().OrderBy(code => code).ToList(),
+        x.Items.OrderBy(i => i.ItemCode).Select(i =>
             new ClassificationItemDto(i.Id, i.ItemCode, i.FabricType, i.GarmentGroup,
                 i.ClothingType, i.Gender, i.TargetUser, i.Size, Grade(i.ConditionRating),
                 i.ProcessingDirection, i.ImageUrls ?? [], i.Notes, i.ClassifiedAt)).ToList());
@@ -718,4 +778,6 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
     }
 
     private static string Grade(int rating) => rating == 1 ? "A" : rating == 2 ? "B" : "C";
+    private static string ProcessingDirectionForGrade(int rating) =>
+        rating == 1 ? "Charity" : rating == 2 ? "Recycling" : "Disposal";
 }

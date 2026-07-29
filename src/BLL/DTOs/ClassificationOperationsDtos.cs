@@ -38,9 +38,13 @@ public record ClassificationCatalogDto(IReadOnlyList<CategoryOptionDto> FabricTy
 
 public record GroupedClassifiedBatchDto(Guid Id, string BatchCode, DateTime ClassificationDate,
     string FabricType, string GarmentGroup, string ClothingType, string Gender, string TargetUser,
-    string Size, string ConditionGrade, string ProcessingDirection, int TotalItem, string Status);
+    string Size, string ConditionGrade, string ProcessingDirection, int TotalItem, string Status,
+    IReadOnlyList<string> DonationRequestCodes);
 
 public record GroupedClassifiedBatchDetailDto(Guid Id, string BatchCode, DateTime ClassificationDate,
     string FabricType, string GarmentGroup, string ClothingType, string Gender, string TargetUser,
     string Size, string ConditionGrade, string ProcessingDirection, int TotalItem, string Status,
-    IReadOnlyList<ClassificationItemDto> Items);
+    IReadOnlyList<string> DonationRequestCodes, IReadOnlyList<ClassificationItemDto> Items);
+
+public record SendGroupedBatchesToWarehouseDto(IReadOnlyList<Guid> GroupedBatchIds);
+public record SendGroupedBatchesToWarehouseResultDto(int Sent, int Skipped);

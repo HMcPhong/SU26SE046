@@ -21,6 +21,33 @@ public partial class AuthService(
     private const string EmailChannel = "Email";
     private const string SmsChannel = "Sms";
 
+    public async Task<CurrentUserProfileDto> GetCurrentUserProfileAsync(Guid userId)
+    {
+        var user = await dbContext.Users
+            .AsNoTracking()
+            .Include(x => x.Role)
+            .Include(x => x.Warehouse)
+            .SingleOrDefaultAsync(x => x.Id == userId && x.IsActive == true)
+            ?? throw new KeyNotFoundException("User account was not found.");
+
+        return new CurrentUserProfileDto(
+            user.Id,
+            user.FullName,
+            user.UserName,
+            user.Email,
+            user.PhoneNumber,
+            user.Address,
+            user.Role.RoleName,
+            user.UserStatus,
+            user.AvatarUrl,
+            user.WarehouseId,
+            user.Warehouse?.WarehouseName,
+            user.Warehouse?.Address,
+            user.EmailConfirmed,
+            user.PhoneNumberConfirmed,
+            user.CreateAt);
+    }
+
     public async Task<AuthResponse> LoginAsync(LoginRequest request)
     {
         var name = request.UserName.Trim().ToLowerInvariant();

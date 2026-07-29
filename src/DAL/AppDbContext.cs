@@ -13,6 +13,7 @@ namespace DAL
         public DbSet<Category> Categories => Set<Category>();
         public DbSet<ClassifiedItem> ClassifiedItems => Set<ClassifiedItem>();
         public DbSet<ClassifiedBatch> ClassifiedBatches => Set<ClassifiedBatch>();
+        public DbSet<ClassifiedBatchDonationRequest> ClassifiedBatchDonationRequests => Set<ClassifiedBatchDonationRequest>();
         public DbSet<ClassificationCriteria> ClassificationCriteria => Set<ClassificationCriteria>();
         public DbSet<ClassificationCriteriaOption> ClassificationCriteriaOptions => Set<ClassificationCriteriaOption>();
         public DbSet<ClassificationResult> ClassificationResults => Set<ClassificationResult>();
@@ -142,6 +143,14 @@ namespace DAL
                 .HasConversion<string>();
 
             modelBuilder.Entity<DonationRequest>()
+                .Property(x => x.RequestCode)
+                .HasMaxLength(32);
+
+            modelBuilder.Entity<DonationRequest>()
+                .HasIndex(x => x.RequestCode)
+                .IsUnique();
+
+            modelBuilder.Entity<DonationRequest>()
                 .HasOne(x => x.Donor)
                 .WithMany(x => x.DonationRequests)
                 .HasForeignKey(x => x.DonorId)
@@ -206,6 +215,27 @@ namespace DAL
             modelBuilder.Entity<ClassifiedBatch>()
                 .HasIndex(x => x.GroupKey)
                 .IsUnique();
+
+            modelBuilder.Entity<ClassifiedBatchDonationRequest>()
+                .HasKey(x => new { x.ClassifiedBatchId, x.DonationRequestId, x.IntakeBatchId });
+
+            modelBuilder.Entity<ClassifiedBatchDonationRequest>()
+                .HasOne(x => x.ClassifiedBatch)
+                .WithMany(x => x.DonationRequestSources)
+                .HasForeignKey(x => x.ClassifiedBatchId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ClassifiedBatchDonationRequest>()
+                .HasOne(x => x.DonationRequest)
+                .WithMany(x => x.ClassifiedBatchDonationRequests)
+                .HasForeignKey(x => x.DonationRequestId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ClassifiedBatchDonationRequest>()
+                .HasOne(x => x.IntakeBatch)
+                .WithMany(x => x.ClassifiedBatchSources)
+                .HasForeignKey(x => x.IntakeBatchId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<StorageLocation>()
                 .HasIndex(x => new { x.WarehouseId, x.LocationCode })
