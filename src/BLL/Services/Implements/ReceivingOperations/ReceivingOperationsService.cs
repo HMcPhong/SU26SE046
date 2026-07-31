@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using BLL.DTOs;
+using BLL.Common;
 using BLL.Services.Interfaces.ReceivingOperations;
 using BLL.Services.Implements.Notifications;
 using DAL;
@@ -959,11 +960,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
     private static bool WasCreatedOnScheduledDate(DonationRequest request, DateTime scheduledDate)
     {
         if (!request.CreateAt.HasValue) return false;
-        TimeZoneInfo zone;
-        try { zone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh"); }
-        catch (TimeZoneNotFoundException) { zone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time"); }
-        var createdUtc = DateTime.SpecifyKind(request.CreateAt.Value, DateTimeKind.Utc);
-        return TimeZoneInfo.ConvertTimeFromUtc(createdUtc, zone).Date == scheduledDate.Date;
+        return VietnamTime.IsSameLocalDate(request.CreateAt.Value, scheduledDate);
     }
 
     private static string ExtractArea(string address)

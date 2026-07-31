@@ -58,7 +58,7 @@ namespace DAL
             modelBuilder.Entity<User>().HasIndex(x => x.Email);
             modelBuilder.Entity<User>().HasIndex(x => x.PhoneNumber);
             modelBuilder.Entity<UserVerificationCode>()
-                .HasIndex(x => new { x.UserId, x.Channel, x.IsActive });
+                .HasIndex(x => new { x.UserId, x.IsActive });
             modelBuilder.Entity<UserVerificationCode>()
                 .HasOne(x => x.User)
                 .WithMany(x => x.VerificationCodes)
@@ -135,7 +135,6 @@ namespace DAL
                     RoleId = RoleSeedData.ReceivingStaffId,
                     UserStatus = "Active",
                     EmailConfirmed = true,
-                    PhoneNumberConfirmed = true,
                     IsActive = true,
                     CreateAt = new DateTime(2025, 1, 1, 0, 0, 0, DateTimeKind.Utc)
                 }

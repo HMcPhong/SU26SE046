@@ -17,12 +17,20 @@ public class NotificationsController(AppDbContext context) : ControllerBase
     public async Task<IActionResult> GetMine([FromQuery] int take = 30)
     {
         take = Math.Clamp(take, 1, 100);
-        var items = await context.Notifications.AsNoTracking()
+        var candidates = await context.Notifications.AsNoTracking()
             .Where(x => x.UserId == UserId && x.IsActive != false)
-            .OrderByDescending(x => x.CreateAt).Take(take)
+            .OrderByDescending(x => x.CreateAt).Take(Math.Min(take * 3, 300))
             .Select(x => new { x.Id, x.Type, x.Title, x.Message, x.TargetUrl,
                 x.DonationRequestId, x.IsRead, CreatedAt = x.CreateAt })
             .ToListAsync();
+        // Hide legacy duplicates produced by concurrent workflow requests. New writes are
+        // protected by atomic status transitions in their corresponding operations.
+        var items = candidates
+            .GroupBy(x => new { x.Type, x.DonationRequestId, x.Title, x.Message, x.TargetUrl })
+            .Select(group => group.OrderByDescending(x => x.CreatedAt).First())
+            .OrderByDescending(x => x.CreatedAt)
+            .Take(take)
+            .ToList();
         return Ok(new { unreadCount = items.Count(x => !x.IsRead), items });
     }
 

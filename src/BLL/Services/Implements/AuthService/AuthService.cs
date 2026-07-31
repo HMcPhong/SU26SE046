@@ -16,10 +16,8 @@ namespace BLL.Services.Implements.AuthService;
 
 public partial class AuthService(
     IUnitOfWork unitOfWork, AppDbContext dbContext, IConfiguration configuration,
-    IEmailVerificationSender emailSender, ISmsVerificationSender smsSender) : IAuthService
+    IEmailVerificationSender emailSender) : IAuthService
 {
-    private const string EmailChannel = "Email";
-    private const string SmsChannel = "Sms";
 
     public async Task<CurrentUserProfileDto> GetCurrentUserProfileAsync(Guid userId)
     {
@@ -44,7 +42,6 @@ public partial class AuthService(
             user.Warehouse?.WarehouseName,
             user.Warehouse?.Address,
             user.EmailConfirmed,
-            user.PhoneNumberConfirmed,
             user.CreateAt);
     }
 
@@ -55,8 +52,8 @@ public partial class AuthService(
             x => x.UserName.ToLower() == name, false, x => x.Role);
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
             throw new InvalidOperationException("Invalid username or password");
-        if ((!user.EmailConfirmed && !user.PhoneNumberConfirmed) || user.UserStatus != "Active")
-            throw new InvalidOperationException("Account verification is incomplete. Please verify your email or phone number.");
+        if (!user.EmailConfirmed || user.UserStatus != "Active")
+            throw new InvalidOperationException("Account verification is incomplete. Please verify your email.");
 
         return new AuthResponse
         {
@@ -69,7 +66,6 @@ public partial class AuthService(
     public async Task<RegisterResponse> RegisterAsync(RegisterRequest request)
     {
         NormalizeAndValidate(request);
-        var verificationChannel = NormalizeChannel(request.VerificationChannel);
         var name = request.UserName.ToLowerInvariant();
         var email = request.Email.ToLowerInvariant();
         if (await dbContext.Users.AnyAsync(x => x.UserName.ToLower() == name))
@@ -87,35 +83,31 @@ public partial class AuthService(
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.Password), RoleId = role.Id,
             Address = request.Address, PhoneNumber = request.PhoneNumber,
             UserStatus = "PendingVerification", EmailConfirmed = false,
-            PhoneNumberConfirmed = false, IsActive = false, CreateAt = DateTime.UtcNow
+            IsActive = false, CreateAt = DateTime.UtcNow
         };
         dbContext.Users.Add(user);
-        var code = CreateCode(user.Id, verificationChannel);
+        var code = CreateCode(user.Id);
         await dbContext.SaveChangesAsync();
         try
         {
-            if (verificationChannel == EmailChannel)
-                await emailSender.SendAsync(user.Email, user.FullName, code);
-            else
-                await smsSender.SendAsync(user.PhoneNumber, code);
+            await emailSender.SendAsync(user.Email, user.FullName, code);
         }
         catch
         {
             throw new InvalidOperationException("Account was created, but verification delivery failed. Please resend the verification codes.");
         }
         return new RegisterResponse(user.Id,
-            $"Registration successful. A verification code was sent by {verificationChannel}.");
+            "Registration successful. A verification code was sent by email.");
     }
 
     public async Task<VerificationResponse> VerifyRegistrationAsync(VerifyRegistrationRequest request)
     {
-        var channel = NormalizeChannel(request.Channel);
         if (!SixDigitCodeRegex().IsMatch(request.Code ?? ""))
             throw new InvalidOperationException("Verification code must contain exactly 6 digits.");
         var user = await dbContext.Users.FindAsync(request.UserId)
             ?? throw new InvalidOperationException("Account was not found.");
         var verification = await dbContext.UserVerificationCodes
-            .Where(x => x.UserId == request.UserId && x.Channel == channel && x.IsActive == true)
+            .Where(x => x.UserId == request.UserId && x.IsActive == true)
             .OrderByDescending(x => x.CreateAt).FirstOrDefaultAsync()
             ?? throw new InvalidOperationException("No active verification code was found.");
         if (verification.ExpiresAt <= DateTime.UtcNow)
@@ -133,52 +125,44 @@ public partial class AuthService(
 
         verification.VerifiedAt = DateTime.UtcNow;
         verification.IsActive = false;
-        if (channel == EmailChannel) user.EmailConfirmed = true;
-        else user.PhoneNumberConfirmed = true;
-        var activated = user.EmailConfirmed || user.PhoneNumberConfirmed;
+        user.EmailConfirmed = true;
+        var activated = user.EmailConfirmed;
         if (activated) { user.UserStatus = "Active"; user.IsActive = true; }
         user.UpdateAt = DateTime.UtcNow;
         await dbContext.SaveChangesAsync();
-        return new VerificationResponse(user.EmailConfirmed, user.PhoneNumberConfirmed, activated,
-            activated ? "Account verification completed." : $"{channel} verification failed.");
+        return new VerificationResponse(user.EmailConfirmed, activated,
+            activated ? "Account verification completed." : "Email verification failed.");
     }
 
     public async Task ResendVerificationAsync(ResendVerificationRequest request)
     {
-        var channel = NormalizeChannel(request.Channel);
         var user = await dbContext.Users.FindAsync(request.UserId)
             ?? throw new InvalidOperationException("Account was not found.");
-        if (channel == EmailChannel ? user.EmailConfirmed : user.PhoneNumberConfirmed)
-            throw new InvalidOperationException($"{channel} is already verified.");
-        var latest = await dbContext.UserVerificationCodes.Where(x => x.UserId == request.UserId && x.Channel == channel)
+        if (user.EmailConfirmed)
+            throw new InvalidOperationException("Email is already verified.");
+        var latest = await dbContext.UserVerificationCodes.Where(x => x.UserId == request.UserId)
             .OrderByDescending(x => x.CreateAt).FirstOrDefaultAsync();
         if (latest?.CreateAt > DateTime.UtcNow.AddMinutes(-1))
             throw new InvalidOperationException("Please wait one minute before requesting another code.");
         await dbContext.UserVerificationCodes
-            .Where(x => x.UserId == request.UserId && x.Channel == channel && x.IsActive == true)
+            .Where(x => x.UserId == request.UserId && x.IsActive == true)
             .ExecuteUpdateAsync(s => s.SetProperty(x => x.IsActive, false));
-        var code = CreateCode(user.Id, channel);
+        var code = CreateCode(user.Id);
         await dbContext.SaveChangesAsync();
-        if (channel == EmailChannel) await emailSender.SendAsync(user.Email, user.FullName, code);
-        else await smsSender.SendAsync(user.PhoneNumber, code);
+        await emailSender.SendAsync(user.Email, user.FullName, code);
     }
 
-    private string CreateCode(Guid userId, string channel)
+    private string CreateCode(Guid userId)
     {
         var code = RandomNumberGenerator.GetInt32(1_000_000).ToString("D6");
         dbContext.UserVerificationCodes.Add(new UserVerificationCode
         {
-            UserId = userId, Channel = channel, CodeHash = HashCode(code),
+            UserId = userId, CodeHash = HashCode(code),
             ExpiresAt = DateTime.UtcNow.AddMinutes(5), CreateAt = DateTime.UtcNow, IsActive = true
         });
         return code;
     }
     private static string HashCode(string code) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(code)));
-    private static string NormalizeChannel(string channel) => channel?.Trim().ToLowerInvariant() switch
-    {
-        "email" => EmailChannel, "sms" => SmsChannel,
-        _ => throw new InvalidOperationException("Channel must be Email or Sms.")
-    };
     private static void NormalizeAndValidate(RegisterRequest r)
     {
         r.FullName = r.FullName.Trim(); r.UserName = r.UserName.Trim();

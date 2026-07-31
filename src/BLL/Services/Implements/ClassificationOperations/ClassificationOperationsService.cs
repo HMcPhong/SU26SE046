@@ -1,4 +1,5 @@
 using BLL.DTOs;
+using BLL.Common;
 using BLL.Services.Interfaces.ClassificationOperations;
 using BLL.Services.Implements.Notifications;
 using DAL;
@@ -67,21 +68,28 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
 
     public async Task ConfirmReceiptAsync(Guid staffId, Guid batchId)
     {
-        var batch = await RequireBatch(batchId);
-        if (batch.Status != "SentToClassification")
+        await using var transaction = await context.Database.BeginTransactionAsync();
+        var receivedAt = DateTime.UtcNow;
+        var updated = await context.IntakeBatches
+            .Where(x => x.Id == batchId && x.IsActive != false && x.Status == "SentToClassification")
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(x => x.Status, "PendingClassification")
+                .SetProperty(x => x.ClassificationReceivedAt, receivedAt)
+                .SetProperty(x => x.ClassificationReceivedByStaffId, staffId)
+                .SetProperty(x => x.UpdateAt, receivedAt)
+                .SetProperty(x => x.UpdatedBy, staffId));
+        if (updated == 0)
             throw new InvalidOperationException("Only an intake batch sent by Receiving Staff can be confirmed.");
-        batch.Status = "PendingClassification";
-        batch.ClassificationReceivedAt = DateTime.UtcNow;
-        batch.ClassificationReceivedByStaffId = staffId;
-        batch.UpdateAt = DateTime.UtcNow;
-        batch.UpdatedBy = staffId;
+
+        var batch = await RequireBatch(batchId);
         var actor = await NotificationWriter.ActorNameAsync(context, staffId);
         var sourceIds = await context.IntakeBatchDonationRequests.Where(x => x.IntakeBatchId == batchId)
             .Select(x => x.DonationRequestId).ToListAsync();
         await NotificationWriter.NotifyDonorsAsync(context, sourceIds, "ClassificationReceived",
             "Bộ phận phân loại đã nhận lô",
-            _ => $"lô {batch.BatchCode} được {actor} xác nhận nhận lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}.", staffId);
+            _ => $"lô {batch.BatchCode} được {actor} xác nhận nhận lúc {NotificationWriter.FormatTime(receivedAt)}.", staffId);
         await context.SaveChangesAsync();
+        await transaction.CommitAsync();
     }
 
     public async Task<ClassificationItemDto> ClassifyItemAsync(Guid staffId, Guid batchId, ClassifyItemDto dto)
@@ -259,7 +267,7 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
     private async Task<ClassifiedBatch> GetOrCreateGroupedBatchAsync(IntakeBatch intakeBatch,
         ClassifiedItem item, Guid staffId)
     {
-        var localDate = DateTime.UtcNow.AddHours(7).Date;
+        var localDate = VietnamTime.Today;
         var key = string.Join('|', intakeBatch.WarehouseId, localDate.ToString("yyyyMMdd"),
             item.ConditionGradeId, item.FabricTypeId, item.GarmentGroupId, item.ClothingTypeId,
             item.GenderId, item.TargetUserId, item.SizeId, item.ProcessingDirection.ToLowerInvariant());

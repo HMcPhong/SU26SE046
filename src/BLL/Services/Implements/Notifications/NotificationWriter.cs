@@ -1,3 +1,4 @@
+using BLL.Common;
 using DAL;
 using DAL.Models;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +21,7 @@ public static class NotificationWriter
             .Select(x => x.Id).ToListAsync();
         foreach (var managerId in managerIds)
             Add(context, managerId, request, "DonationRequestCreated", "Có đơn quyên góp mới",
-                $"Donor {request.ContactName} vừa tạo đơn {request.RequestCode} lúc {FormatTime(DateTime.UtcNow)}.",
+                $"Donor {request.ContactName} vừa tạo đơn {request.RequestCode}, yêu cầu tiếp nhận ngày {FormatDate(request.PickupDate)} lúc {FormatTime(DateTime.UtcNow)}.",
                 $"/manager/dispatch?requestId={request.Id}");
     }
 
@@ -44,12 +45,11 @@ public static class NotificationWriter
 
     public static string FormatTime(DateTime utc)
     {
-        TimeZoneInfo zone;
-        try { zone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh"); }
-        catch (TimeZoneNotFoundException) { zone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time"); }
-        return TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone)
-            .ToString("HH:mm dd/MM/yyyy");
+        return VietnamTime.FromUtc(utc).ToString("HH:mm dd/MM/yyyy");
     }
+
+    private static string FormatDate(DateTime? date) =>
+        date.HasValue ? date.Value.ToString("dd/MM/yyyy") : "chưa xác định";
 
     private static void Add(AppDbContext context, Guid userId, DonationRequest request, string type,
         string title, string message, string targetUrl, Guid? actorId = null) => context.Notifications.Add(new Notification
