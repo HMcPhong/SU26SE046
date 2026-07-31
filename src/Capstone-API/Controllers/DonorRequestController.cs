@@ -24,12 +24,12 @@ namespace Capstone_API.Controllers
         {
             Guid donorId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
 
-            await _service.CreateAsync(donorId, dto);
+            var requestId = await _service.CreateAsync(donorId, dto);
 
             return Ok(new
             {
-                Message =
-                "Donation request created successfully."
+                Message = "Donation request created successfully.",
+                RequestId = requestId
             });
         }
 
@@ -74,19 +74,11 @@ namespace Capstone_API.Controllers
             return Ok(result);
         }
         [HttpGet("search")]
-        [AllowAnonymous]
-        public async Task<IActionResult> SearchByPhoneNumber([FromQuery] string phoneNumber)
+        [Authorize(Roles = "Donor")]
+        public async Task<IActionResult> SearchByPhoneNumber()
         {
-            if (string.IsNullOrWhiteSpace(phoneNumber))
-            {
-                return BadRequest(new
-                {
-                    Message = "Phone number is required."
-                });
-            }
-
-            var result =
-                await _service.SearchByPhoneNumberAsync(phoneNumber);
+            Guid donorId = Guid.Parse(User.FindFirst(ClaimTypes.NameIdentifier)!.Value);
+            var result = await _service.GetByDonorIdAsync(donorId);
 
             return Ok(result);
         }

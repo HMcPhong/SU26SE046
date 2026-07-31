@@ -22,6 +22,7 @@ public interface IWarehouseOperationsService
     Task<IReadOnlyList<StorageLocationDto>> GetLocationsAsync(Guid batchId);
     Task PutawayAsync(Guid staffId, Guid batchId, PutawayBatchDto dto);
     Task<IReadOnlyList<WarehouseInventoryDto>> GetInventoryAsync(Guid userId, Guid? warehouseId, string? search);
+    Task<IReadOnlyList<WarehouseInventoryDto>> GetLocationInventoryAsync(Guid userId, Guid locationId);
     Task<IReadOnlyList<WarehouseTransactionDto>> GetTransactionsAsync(Guid userId, Guid? warehouseId, string? type);
     Task IssueAsync(Guid staffId, Guid inventoryId, IssueInventoryDto dto);
     Task MoveAsync(Guid staffId, Guid inventoryId, MoveInventoryDto dto);

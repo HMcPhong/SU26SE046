@@ -1,5 +1,6 @@
 using BLL.DTOs;
 using BLL.Services.Interfaces.ClassificationOperations;
+using BLL.Services.Implements.Notifications;
 using DAL;
 using DAL.Models;
 using Microsoft.EntityFrameworkCore;
@@ -74,6 +75,12 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
         batch.ClassificationReceivedByStaffId = staffId;
         batch.UpdateAt = DateTime.UtcNow;
         batch.UpdatedBy = staffId;
+        var actor = await NotificationWriter.ActorNameAsync(context, staffId);
+        var sourceIds = await context.IntakeBatchDonationRequests.Where(x => x.IntakeBatchId == batchId)
+            .Select(x => x.DonationRequestId).ToListAsync();
+        await NotificationWriter.NotifyDonorsAsync(context, sourceIds, "ClassificationReceived",
+            "Bộ phận phân loại đã nhận lô",
+            _ => $"lô {batch.BatchCode} được {actor} xác nhận nhận lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}.", staffId);
         await context.SaveChangesAsync();
     }
 
@@ -113,6 +120,7 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
         };
         var groupedBatch = await GetOrCreateGroupedBatchAsync(batch, item, staffId);
         item.ClassifiedBatchId = groupedBatch.Id;
+        await LinkBatchProvenanceAsync(groupedBatch.Id, batchId, staffId);
         groupedBatch.TotalItem++;
         groupedBatch.UpdateAt = DateTime.UtcNow;
         groupedBatch.UpdatedBy = staffId;
@@ -134,18 +142,25 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
             .Select(x => new GroupedClassifiedBatchDto(x.Id, x.BatchCode, x.ClassificationDate,
                 x.FabricType, x.GarmentGroup, x.ClothingType, x.Gender, x.TargetUser, x.Size,
                 x.ConditionRating == 1 ? "A" : x.ConditionRating == 2 ? "B" : "C",
-                x.ProcessingDirection, x.TotalItem, x.Status)).ToListAsync();
+                x.ProcessingDirection, x.TotalItem, x.Status,
+                x.DonationRequestSources.Where(s => s.IsActive != false)
+                    .Select(s => s.DonationRequest.RequestCode).Distinct().OrderBy(code => code).ToList()))
+            .ToListAsync();
     }
 
     public async Task<GroupedClassifiedBatchDetailDto?> GetGroupedBatchAsync(Guid groupedBatchId)
     {
         var group = await context.ClassifiedBatches.AsNoTracking()
             .Include(x => x.Items.Where(i => i.IsActive != false))
+            .Include(x => x.DonationRequestSources.Where(s => s.IsActive != false))
+                .ThenInclude(x => x.DonationRequest)
             .FirstOrDefaultAsync(x => x.Id == groupedBatchId && x.IsActive != false);
         return group is null ? null : new GroupedClassifiedBatchDetailDto(group.Id, group.BatchCode,
             group.ClassificationDate, group.FabricType, group.GarmentGroup, group.ClothingType,
             group.Gender, group.TargetUser, group.Size, Grade(group.ConditionRating),
             group.ProcessingDirection, group.TotalItem, group.Status,
+            group.DonationRequestSources.Select(x => x.DonationRequest.RequestCode)
+                .Distinct().OrderBy(code => code).ToList(),
             group.Items.OrderBy(x => x.ClassifiedAt).Select(MapItem).ToList());
     }
 
@@ -166,7 +181,61 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
         batch.SentToWarehouseByStaffId = staffId;
         batch.UpdateAt = DateTime.UtcNow;
         batch.UpdatedBy = staffId;
+        var sourceIds = await context.ClassifiedBatchDonationRequests
+            .Where(x => x.ClassifiedBatchId == groupedBatchId && x.IsActive != false)
+            .Select(x => x.DonationRequestId).ToListAsync();
+        await NotificationWriter.NotifyDonorsAsync(context, sourceIds, "SentToWarehouse", "Đã chuyển sang kho",
+            _ => $"batch {batch.BatchCode} được chuyển sang kho lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}.", staffId);
         await context.SaveChangesAsync();
+    }
+
+    public async Task<SendGroupedBatchesToWarehouseResultDto> SendGroupedBatchesToWarehouseAsync(
+        Guid staffId, IReadOnlyList<Guid> groupedBatchIds)
+    {
+        var ids = groupedBatchIds.Where(x => x != Guid.Empty).Distinct().ToList();
+        if (ids.Count == 0)
+            throw new InvalidOperationException("Select at least one classified batch.");
+
+        var batches = await context.ClassifiedBatches
+            .Include(x => x.Items)
+            .Where(x => ids.Contains(x.Id) && x.IsActive != false)
+            .ToListAsync();
+        if (batches.Count != ids.Count)
+            throw new InvalidOperationException("One or more classified batches no longer exist.");
+
+        var now = DateTime.UtcNow;
+        var sent = 0;
+        var sentBatchIds = new List<Guid>();
+        foreach (var batch in batches.Where(x => x.Status == "Open"))
+        {
+            var itemCount = batch.Items.Count(x => x.IsActive != false);
+            if (itemCount == 0)
+                throw new InvalidOperationException(
+                    $"Classified batch {batch.BatchCode} does not contain any item.");
+
+            batch.TotalItem = itemCount;
+            batch.Status = "PendingWarehouseReceipt";
+            batch.SentToWarehouseAt = now;
+            batch.SentToWarehouseByStaffId = staffId;
+            batch.UpdateAt = now;
+            batch.UpdatedBy = staffId;
+            sentBatchIds.Add(batch.Id);
+            sent++;
+        }
+
+        if (sent > 0)
+        {
+            var provenance = await context.ClassifiedBatchDonationRequests
+                .Where(x => sentBatchIds.Contains(x.ClassifiedBatchId) && x.IsActive != false)
+                .Select(x => new { x.ClassifiedBatchId, x.DonationRequestId }).ToListAsync();
+            foreach (var batch in batches.Where(x => sentBatchIds.Contains(x.Id)))
+                await NotificationWriter.NotifyDonorsAsync(context,
+                    provenance.Where(x => x.ClassifiedBatchId == batch.Id).Select(x => x.DonationRequestId),
+                    "SentToWarehouse", "Đã chuyển sang kho",
+                    _ => $"batch {batch.BatchCode} được chuyển sang kho lúc {NotificationWriter.FormatTime(now)}.", staffId);
+            await context.SaveChangesAsync();
+        }
+        return new SendGroupedBatchesToWarehouseResultDto(sent, batches.Count - sent);
     }
 
     public async Task CompleteBatchAsync(Guid staffId, Guid batchId)
@@ -176,6 +245,10 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
         if (!await context.ClassifiedItems.AnyAsync(x => x.BatchId == batchId && x.IsActive != false))
             throw new InvalidOperationException("Classify at least one item before completing the batch.");
         batch.Status = "Classified"; batch.UpdateAt = DateTime.UtcNow; batch.UpdatedBy = staffId;
+        var sourceIds = await context.IntakeBatchDonationRequests.Where(x => x.IntakeBatchId == batchId)
+            .Select(x => x.DonationRequestId).ToListAsync();
+        await NotificationWriter.NotifyDonorsAsync(context, sourceIds, "ClassificationCompleted",
+            "Đã phân loại xong", _ => $"lô {batch.BatchCode} hoàn tất phân loại lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}.", staffId);
         await context.SaveChangesAsync();
     }
 
@@ -207,6 +280,37 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
         };
         context.ClassifiedBatches.Add(group);
         return group;
+    }
+
+    private async Task LinkBatchProvenanceAsync(Guid classifiedBatchId, Guid intakeBatchId, Guid staffId)
+    {
+        var requestIds = await context.IntakeBatchDonationRequests.AsNoTracking()
+            .Where(x => x.IntakeBatchId == intakeBatchId && x.IsActive != false)
+            .Select(x => x.DonationRequestId)
+            .Distinct()
+            .ToListAsync();
+        if (requestIds.Count == 0) return;
+
+        var existingIds = await context.ClassifiedBatchDonationRequests.AsNoTracking()
+            .Where(x => x.ClassifiedBatchId == classifiedBatchId
+                && x.IntakeBatchId == intakeBatchId
+                && requestIds.Contains(x.DonationRequestId))
+            .Select(x => x.DonationRequestId)
+            .ToListAsync();
+        var now = DateTime.UtcNow;
+        context.ClassifiedBatchDonationRequests.AddRange(requestIds
+            .Where(id => !existingIds.Contains(id))
+            .Select(id => new ClassifiedBatchDonationRequest
+            {
+                Id = Guid.NewGuid(),
+                ClassifiedBatchId = classifiedBatchId,
+                DonationRequestId = id,
+                IntakeBatchId = intakeBatchId,
+                LinkedAt = now,
+                CreateAt = now,
+                CreatedBy = staffId,
+                IsActive = true
+            }));
     }
 
     private async Task<CategorySelection> ResolveCategoriesAsync(ClassifyItemDto dto)

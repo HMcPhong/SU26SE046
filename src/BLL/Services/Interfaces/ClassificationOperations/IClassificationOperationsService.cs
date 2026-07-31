@@ -14,4 +14,6 @@ public interface IClassificationOperationsService
     Task<IReadOnlyList<GroupedClassifiedBatchDto>> GetGroupedBatchesAsync(DateTime? date);
     Task<GroupedClassifiedBatchDetailDto?> GetGroupedBatchAsync(Guid groupedBatchId);
     Task SendGroupedBatchToWarehouseAsync(Guid staffId, Guid groupedBatchId);
+    Task<SendGroupedBatchesToWarehouseResultDto> SendGroupedBatchesToWarehouseAsync(
+        Guid staffId, IReadOnlyList<Guid> groupedBatchIds);
 }

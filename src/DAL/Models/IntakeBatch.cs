@@ -26,6 +26,8 @@ namespace DAL.Models
         public virtual User? ClassificationReceivedByStaff { get; set; }
         public virtual ICollection<IntakeBatchDonationRequest> IntakeBatchDonationRequests { get; set; }
             = new List<IntakeBatchDonationRequest>();
+        public virtual ICollection<ClassifiedBatchDonationRequest> ClassifiedBatchSources { get; set; }
+            = new List<ClassifiedBatchDonationRequest>();
         public virtual ICollection<ClassifiedItem> ClassifiedItems { get; set; }
             = new List<ClassifiedItem>();
         public virtual ICollection<PickupAssignment> PickupAssignments { get; set; }

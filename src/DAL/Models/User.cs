@@ -26,5 +26,7 @@ namespace DAL.Models
             = new List<DonationRequest>();
         public virtual ICollection<UserVerificationCode> VerificationCodes { get; set; }
             = new List<UserVerificationCode>();
+        public virtual ICollection<Notification> Notifications { get; set; }
+            = new List<Notification>();
     }
 }

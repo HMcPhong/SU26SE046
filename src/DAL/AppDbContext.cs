@@ -13,6 +13,7 @@ namespace DAL
         public DbSet<Category> Categories => Set<Category>();
         public DbSet<ClassifiedItem> ClassifiedItems => Set<ClassifiedItem>();
         public DbSet<ClassifiedBatch> ClassifiedBatches => Set<ClassifiedBatch>();
+        public DbSet<ClassifiedBatchDonationRequest> ClassifiedBatchDonationRequests => Set<ClassifiedBatchDonationRequest>();
         public DbSet<ClassificationCriteria> ClassificationCriteria => Set<ClassificationCriteria>();
         public DbSet<ClassificationCriteriaOption> ClassificationCriteriaOptions => Set<ClassificationCriteriaOption>();
         public DbSet<ClassificationResult> ClassificationResults => Set<ClassificationResult>();
@@ -21,6 +22,7 @@ namespace DAL
         public DbSet<InspectionAnswer> InspectionAnswers => Set<InspectionAnswer>();
         public DbSet<DistributionRequest> DistributionRequests => Set<DistributionRequest>();
         public DbSet<DistributionItem> DistributionItems => Set<DistributionItem>();
+        public DbSet<ShipmentStatusHistory> ShipmentStatusHistories => Set<ShipmentStatusHistory>();
         public DbSet<DonationRequest> DonationRequests => Set<DonationRequest>();
         public DbSet<IntakeBatch> IntakeBatches => Set<IntakeBatch>();
         public DbSet<IntakeBatchDonationRequest> IntakeBatchDonationRequests => Set<IntakeBatchDonationRequest>();
@@ -40,6 +42,7 @@ namespace DAL
         public DbSet<TransferItem> TransferItems => Set<TransferItem>();
         public DbSet<Profile> Profiles => Set<Profile>();
         public DbSet<ProfileDetail> ProfileDetails => Set<ProfileDetail>();
+        public DbSet<Notification> Notifications => Set<Notification>();
 
         public AppDbContext(DbContextOptions<AppDbContext> options)
             : base(options)
@@ -142,6 +145,44 @@ namespace DAL
                 .HasConversion<string>();
 
             modelBuilder.Entity<DonationRequest>()
+                .Property(x => x.RequestCode)
+                .HasMaxLength(32);
+
+            modelBuilder.Entity<DonationRequest>()
+                .HasIndex(x => x.RequestCode)
+                .IsUnique();
+
+            modelBuilder.Entity<Notification>().Property(x => x.Type).HasMaxLength(60);
+            modelBuilder.Entity<Notification>().Property(x => x.Title).HasMaxLength(200);
+            modelBuilder.Entity<Notification>().Property(x => x.TargetUrl).HasMaxLength(500);
+            modelBuilder.Entity<Notification>().HasIndex(x => new { x.UserId, x.IsRead, x.CreateAt });
+            modelBuilder.Entity<Notification>()
+                .HasOne(x => x.User).WithMany(x => x.Notifications)
+                .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Notification>()
+                .HasOne(x => x.DonationRequest).WithMany(x => x.Notifications)
+                .HasForeignKey(x => x.DonationRequestId).OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<DistributionItem>()
+                .HasOne(x => x.Inventory).WithMany()
+                .HasForeignKey(x => x.InventoryId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DistributionRequest>()
+                .Property(x => x.RequestCode).HasMaxLength(32);
+            modelBuilder.Entity<DistributionRequest>()
+                .HasIndex(x => x.RequestCode).IsUnique();
+            modelBuilder.Entity<DistributionRequest>()
+                .HasIndex(x => x.IssueSlipCode).IsUnique().HasFilter("[IssueSlipCode] IS NOT NULL");
+            modelBuilder.Entity<DistributionRequest>()
+                .HasIndex(x => x.GhnOrderCode).IsUnique().HasFilter("[GhnOrderCode] IS NOT NULL");
+            modelBuilder.Entity<DistributionRequest>().HasOne(x => x.ApprovedByManager).WithMany()
+                .HasForeignKey(x => x.ApprovedByManagerId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DistributionRequest>().HasOne(x => x.WarehouseIssuedByStaff).WithMany()
+                .HasForeignKey(x => x.WarehouseIssuedByStaffId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ShipmentStatusHistory>()
+                .HasOne(x => x.DistributionRequest).WithMany(x => x.ShipmentHistory)
+                .HasForeignKey(x => x.DistributionRequestId).OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<DonationRequest>()
                 .HasOne(x => x.Donor)
                 .WithMany(x => x.DonationRequests)
                 .HasForeignKey(x => x.DonorId)
@@ -206,6 +247,27 @@ namespace DAL
             modelBuilder.Entity<ClassifiedBatch>()
                 .HasIndex(x => x.GroupKey)
                 .IsUnique();
+
+            modelBuilder.Entity<ClassifiedBatchDonationRequest>()
+                .HasKey(x => new { x.ClassifiedBatchId, x.DonationRequestId, x.IntakeBatchId });
+
+            modelBuilder.Entity<ClassifiedBatchDonationRequest>()
+                .HasOne(x => x.ClassifiedBatch)
+                .WithMany(x => x.DonationRequestSources)
+                .HasForeignKey(x => x.ClassifiedBatchId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ClassifiedBatchDonationRequest>()
+                .HasOne(x => x.DonationRequest)
+                .WithMany(x => x.ClassifiedBatchDonationRequests)
+                .HasForeignKey(x => x.DonationRequestId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ClassifiedBatchDonationRequest>()
+                .HasOne(x => x.IntakeBatch)
+                .WithMany(x => x.ClassifiedBatchSources)
+                .HasForeignKey(x => x.IntakeBatchId)
+                .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<StorageLocation>()
                 .HasIndex(x => new { x.WarehouseId, x.LocationCode })

@@ -1,6 +1,7 @@
 using System.Text.RegularExpressions;
 using BLL.DTOs;
 using BLL.Services.Interfaces.ReceivingOperations;
+using BLL.Services.Implements.Notifications;
 using DAL;
 using DAL.Models;
 using DAL.Models.Enum;
@@ -283,6 +284,9 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             .ThenBy(x => x.PickupAddress)
             .ToListAsync();
 
+        if (shift.StartTime < TimeSpan.FromHours(12))
+            candidates = candidates.Where(x => !WasCreatedOnScheduledDate(x, shift.ShiftDate)).ToList();
+
         if (candidates.Count == 0) return 0;
 
         var batch = await context.IntakeBatches
@@ -315,6 +319,8 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             });
             request.Status = DonationRequestStatus.ReceivingStaffAssigned;
             request.UpdateAt = DateTime.UtcNow;
+            NotificationWriter.NotifyDonor(context, request, "ReceivingStaffAssigned", "Đã phân công nhân viên tiếp nhận",
+                $"được phân công vào team {team.TeamName}, ca {shift.ShiftName} ngày {shift.ShiftDate:dd/MM/yyyy}.");
             planned++;
         }
         await context.SaveChangesAsync();
@@ -380,6 +386,8 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
                 allTeams.ToDictionary(x => x.Id, _ => 0));
         var pickupRequests = requests.Where(x => x.DeliveryMethod == "StaffPickup").ToList();
         var dropOffRequests = requests.Where(x => x.DeliveryMethod == "DonorDropOff").ToList();
+        var afternoonPickupTeams = pickupTeams.Where(x => x.Shift.StartTime >= TimeSpan.FromHours(12)).ToList();
+        var afternoonWarehouseTeams = warehouseTeams.Where(x => x.Shift.StartTime >= TimeSpan.FromHours(12)).ToList();
         if (pickupRequests.Count != 0 && pickupTeams.Count == 0)
             throw new InvalidOperationException("Create at least one pickup team before assigning staff-pickup requests.");
         if (dropOffRequests.Count != 0 && warehouseTeams.Count == 0)
@@ -433,7 +441,8 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
                 var quota = baseSize + (teamIndex < remainder ? 1 : 0);
                 var teamRequests = sourceRequests.Skip(offset).Take(quota).ToList();
                 offset += quota;
-                counts[team.Id] = teamRequests.Count;
+                var existingCount = counts[team.Id];
+                counts[team.Id] += teamRequests.Count;
                 var batch = batchByTeam[team.Id];
                 batch.RouteName = warehouseDropOff
                     ? "Nhận trực tiếp tại kho"
@@ -456,7 +465,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
                     assignment.ShiftId = team.ShiftId;
                     assignment.TeamId = team.Id;
                     assignment.IntakeBatchId = batch.Id;
-                    assignment.RouteOrder = index + 1;
+                    assignment.RouteOrder = existingCount + index + 1;
                     assignment.AreaKey = warehouseDropOff ? "Tại kho" : ExtractArea(request.PickupAddress);
                     assignment.UpdateAt = DateTime.UtcNow;
                     request.Status = DonationRequestStatus.ReceivingStaffAssigned;
@@ -464,7 +473,21 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
                 }
             }
         }
-        AssignBalanced(pickupRequests, pickupTeams, false);
+        var pickupCreatedToday = pickupRequests.Where(x => WasCreatedOnScheduledDate(x, selectedShift.ShiftDate)).ToList();
+        var pickupPlannedEarlier = pickupRequests.Except(pickupCreatedToday).ToList();
+        var dropOffCreatedToday = dropOffRequests.Where(x => WasCreatedOnScheduledDate(x, selectedShift.ShiftDate)).ToList();
+        var dropOffPlannedEarlier = dropOffRequests.Except(dropOffCreatedToday).ToList();
+        if (pickupCreatedToday.Count > 0 && afternoonPickupTeams.Count == 0)
+            throw new InvalidOperationException("Create a complete afternoon pickup team for requests created this morning.");
+        if (dropOffCreatedToday.Count > 0 && afternoonWarehouseTeams.Count == 0)
+            throw new InvalidOperationException("Create a complete afternoon warehouse team for drop-offs created this morning.");
+        AssignBalanced(pickupPlannedEarlier, pickupTeams, false);
+        AssignBalanced(pickupCreatedToday, afternoonPickupTeams, false);
+        AssignBalanced(dropOffPlannedEarlier, warehouseTeams, true);
+        AssignBalanced(dropOffCreatedToday, afternoonWarehouseTeams, true);
+        foreach (var request in requests)
+            NotificationWriter.NotifyDonor(context, request, "ReceivingStaffAssigned", "Đã phân công nhân viên tiếp nhận",
+                $"được hệ thống điều phối vào team tiếp nhận ngày {selectedShift.ShiftDate:dd/MM/yyyy}.");
         await context.SaveChangesAsync();
         return new AutoBalanceResultDto(allTeams.Count, pickupRequests.Count, counts);
     }
@@ -481,9 +504,9 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
                 && !assignedIds.Contains(x.Id))
             .OrderBy(x => x.PickupDate).ThenBy(x => x.CreateAt)
             .Select(x => new DispatchRequestDto(
-                x.Id, $"DR-{x.CreateAt!.Value.Year}-{x.Id.ToString().Substring(0, 8).ToUpper()}",
+                x.Id, x.RequestCode,
                 x.ContactName, x.ContactPhoneNumber, x.DeliveryMethod, x.PickupAddress,
-                x.PickupDate, x.WarehouseId, x.Warehouse.WarehouseName))
+                x.PickupDate, x.WarehouseId, x.Warehouse.WarehouseName, x.CreateAt))
             .ToListAsync();
 
         var teams = await context.OperationalTeams.AsNoTracking()
@@ -538,7 +561,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
                 var batch = x.IntakeBatches.FirstOrDefault(b => b.ReceivingTeamId == team.Id);
                 var requests = batch?.PickupAssignments.OrderBy(a => a.RouteOrder).Select(a =>
                     new ManagerAssignedRequestDto(a.DonorRequestId,
-                        $"DR-{a.DonorRequest.CreateAt!.Value.Year}-{a.DonorRequestId.ToString()[..8].ToUpperInvariant()}",
+                        a.DonorRequest.RequestCode,
                         a.DonorRequest.ContactName, a.DonorRequest.ContactPhoneNumber,
                         a.DonorRequest.PickupAddress, a.DonorRequest.PickupDate,
                         a.DonorRequest.DeliveryMethod, a.Status, a.RouteOrder)).ToList() ?? [];
@@ -576,6 +599,10 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             throw new InvalidOperationException("The team and donation request must belong to the same warehouse.");
         if (!request.PickupDate.HasValue || request.PickupDate.Value.Date != team.Shift.ShiftDate.Date)
             throw new InvalidOperationException("The team shift date must match the donation pickup appointment date.");
+        if (WasCreatedOnScheduledDate(request, team.Shift.ShiftDate)
+            && team.Shift.StartTime < TimeSpan.FromHours(12))
+            throw new InvalidOperationException(
+                "A request created this morning can only be assigned to an afternoon shift.");
         var warehouseTeam = team.TeamType == "ReceivingWarehouse";
         if (request.DeliveryMethod == "DonorDropOff" && !warehouseTeam)
             throw new InvalidOperationException("A warehouse drop-off request can only be assigned to a warehouse receiving team.");
@@ -612,6 +639,8 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         assignment.UpdateAt = DateTime.UtcNow;
         request.Status = DonationRequestStatus.ReceivingStaffAssigned;
         request.UpdateAt = DateTime.UtcNow;
+        NotificationWriter.NotifyDonor(context, request, "ReceivingStaffAssigned", "Đã phân công nhân viên tiếp nhận",
+            $"được phân công vào team {team.TeamName}, ca ngày {team.Shift.ShiftDate:dd/MM/yyyy}.");
         await context.SaveChangesAsync();
     }
 
@@ -703,6 +732,9 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         assignment.DonorRequest.ImageUrls = dto.ImageUrls ?? assignment.DonorRequest.ImageUrls;
         assignment.DonorRequest.Status = DonationRequestStatus.Confirmed; assignment.DonorRequest.UpdateAt = DateTime.UtcNow;
         batch.TotalWeight += dto.ActualWeight; batch.UpdateAt = DateTime.UtcNow;
+        var actor = await NotificationWriter.ActorNameAsync(context, staffId);
+        NotificationWriter.NotifyDonor(context, assignment.DonorRequest, "DonationReceived", "Đã tiếp nhận đồ quyên góp",
+            $"được {actor} tiếp nhận lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}, khối lượng {dto.ActualWeight:0.##} kg.", staffId);
         await context.SaveChangesAsync();
     }
 
@@ -736,7 +768,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             .OrderBy(request => request.PickupDate).ThenBy(request => request.CreateAt)
             .Select(request => new WarehouseDropOffItemDto(
                 request.Id, request.WarehouseId,
-                $"DR-{request.CreateAt!.Value.Year}-{request.Id.ToString().Substring(0, 8).ToUpper()}",
+                request.RequestCode,
                 request.ContactName, request.ContactPhoneNumber, request.PickupAddress,
                 request.PickupDate!.Value, request.Description ?? string.Empty,
                 request.EstimateWeight, request.Status.ToString(), request.ImageUrls))
@@ -813,6 +845,9 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         request.UpdateAt = DateTime.UtcNow;
         batch.TotalWeight += dto.ActualWeight;
         batch.UpdateAt = DateTime.UtcNow;
+        var actor = await NotificationWriter.ActorNameAsync(context, staffId);
+        NotificationWriter.NotifyDonor(context, request, "DonationReceived", "Đã tiếp nhận tại kho",
+            $"được {actor} tiếp nhận lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}, khối lượng {dto.ActualWeight:0.##} kg.", staffId);
         await context.SaveChangesAsync();
     }
 
@@ -858,6 +893,10 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         batch.SentToClassificationAt = DateTime.UtcNow;
         batch.UpdateAt = DateTime.UtcNow;
         batch.UpdatedBy = staffId;
+        await NotificationWriter.NotifyDonorsAsync(context,
+            batch.IntakeBatchDonationRequests.Select(x => x.DonationRequestId),
+            "SentToClassification", "Đã chuyển sang phân loại",
+            _ => $"đã được chuyển trong lô {batch.BatchCode} lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}.", staffId);
         await context.SaveChangesAsync();
     }
 
@@ -907,7 +946,7 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         Requests = batch.PickupAssignments.OrderBy(x => x.RouteOrder).Select(x => new ReceivingRequestDto
         {
             Id = x.DonorRequestId, BatchId = batch.Id,
-            Code = $"DR-{x.DonorRequest.CreateAt?.Year}-{x.DonorRequestId.ToString()[..8].ToUpperInvariant()}",
+            Code = x.DonorRequest.RequestCode,
             DonorName = x.DonorRequest.ContactName, PhoneNumber = x.DonorRequest.ContactPhoneNumber,
             PickupAddress = x.DonorRequest.PickupAddress, Description = x.DonorRequest.Description ?? string.Empty,
             EstimateWeight = x.DonorRequest.EstimateWeight, ActualWeight = x.DonorRequest.ActualWeight,
@@ -916,6 +955,16 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             ImageUrls = x.DonorRequest.ImageUrls
         }).ToList()
     };
+
+    private static bool WasCreatedOnScheduledDate(DonationRequest request, DateTime scheduledDate)
+    {
+        if (!request.CreateAt.HasValue) return false;
+        TimeZoneInfo zone;
+        try { zone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh"); }
+        catch (TimeZoneNotFoundException) { zone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time"); }
+        var createdUtc = DateTime.SpecifyKind(request.CreateAt.Value, DateTimeKind.Utc);
+        return TimeZoneInfo.ConvertTimeFromUtc(createdUtc, zone).Date == scheduledDate.Date;
+    }
 
     private static string ExtractArea(string address)
     {

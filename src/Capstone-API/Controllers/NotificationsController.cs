@@ -1,0 +1,54 @@
+using DAL;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using System.Security.Claims;
+
+namespace Capstone_API.Controllers;
+
+[ApiController]
+[Authorize]
+[Route("api/notifications")]
+public class NotificationsController(AppDbContext context) : ControllerBase
+{
+    private Guid UserId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+
+    [HttpGet]
+    public async Task<IActionResult> GetMine([FromQuery] int take = 30)
+    {
+        take = Math.Clamp(take, 1, 100);
+        var items = await context.Notifications.AsNoTracking()
+            .Where(x => x.UserId == UserId && x.IsActive != false)
+            .OrderByDescending(x => x.CreateAt).Take(take)
+            .Select(x => new { x.Id, x.Type, x.Title, x.Message, x.TargetUrl,
+                x.DonationRequestId, x.IsRead, CreatedAt = x.CreateAt })
+            .ToListAsync();
+        return Ok(new { unreadCount = items.Count(x => !x.IsRead), items });
+    }
+
+    [HttpPatch("{id:guid}/read")]
+    public async Task<IActionResult> MarkRead(Guid id)
+    {
+        var item = await context.Notifications.FirstOrDefaultAsync(x => x.Id == id && x.UserId == UserId && x.IsActive != false);
+        if (item is null) return NotFound();
+        item.IsRead = true; item.ReadAt = DateTime.UtcNow; item.UpdateAt = DateTime.UtcNow;
+        await context.SaveChangesAsync();
+        return NoContent();
+    }
+
+    [HttpPatch("read-all")]
+    public async Task<IActionResult> MarkAllRead()
+    {
+        await context.Notifications.Where(x => x.UserId == UserId && !x.IsRead && x.IsActive != false)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.IsRead, true)
+                .SetProperty(x => x.ReadAt, DateTime.UtcNow).SetProperty(x => x.UpdateAt, DateTime.UtcNow));
+        return NoContent();
+    }
+
+    [HttpDelete]
+    public async Task<IActionResult> ClearAll()
+    {
+        await context.Notifications.Where(x => x.UserId == UserId).ExecuteDeleteAsync();
+        return NoContent();
+    }
+}

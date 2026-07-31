@@ -1,6 +1,8 @@
 ﻿using BLL.DTOs;
 using BLL.Services.Interfaces.AuthService;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
 
 namespace Capstone_API.Controllers
 {
@@ -36,6 +38,14 @@ namespace Capstone_API.Controllers
         public async Task<AuthResponse> Login(LoginRequest request)
         {
             return await _authService.LoginAsync(request);
+        }
+
+        [Authorize]
+        [HttpGet("me")]
+        public async Task<CurrentUserProfileDto> Me()
+        {
+            var userId = Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+            return await _authService.GetCurrentUserProfileAsync(userId);
         }
     }
 }

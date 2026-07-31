@@ -6,7 +6,11 @@ using Microsoft.AspNetCore.Mvc;
 namespace Capstone_API.Controllers;
 
 [Route("api/warehouses")]
-public class WarehouseController(ICrudService<Warehouse> service) : CrudControllerBase<Warehouse>(service);
+public class WarehouseController(ICrudService<Warehouse> service) : CrudControllerBase<Warehouse>(service)
+{
+    [AllowAnonymous]
+    public override Task<ActionResult<List<Warehouse>>> GetAll() => base.GetAll();
+}
 
 [Route("api/categories")]
 [Authorize(Roles = "Manager")]

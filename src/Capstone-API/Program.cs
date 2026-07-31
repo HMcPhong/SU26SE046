@@ -16,6 +16,7 @@ using BLL.Services.Implements.ManagerDashboard;
 using BLL.Services.Interfaces.ManagerDashboard;
 using BLL.Services.Implements.ManagerAccounts;
 using BLL.Services.Interfaces.ManagerAccounts;
+using BLL.Services.Implements.DistributionOperations;
 using DAL;
 using DAL.Repository;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -42,6 +43,8 @@ builder.Services.AddScoped<IClassificationOperationsService, ClassificationOpera
 builder.Services.AddScoped<IWarehouseOperationsService, WarehouseOperationsService>();
 builder.Services.AddScoped<IManagerDashboardService, ManagerDashboardService>();
 builder.Services.AddScoped<IManagerAccountService, ManagerAccountService>();
+builder.Services.AddHttpClient<DistributionOperationsService>(client =>
+    client.BaseAddress = new Uri("https://dev-online-gateway.ghn.vn/shiip/public-api/"));
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 

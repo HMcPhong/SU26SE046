@@ -1,5 +1,6 @@
 ﻿using BLL.DTOs;
 using BLL.Services.Interfaces.DonorRequestService;
+using BLL.Services.Implements.Notifications;
 using DAL;
 using DAL.Models;
 using DAL.Models.Enum;
@@ -18,7 +19,7 @@ namespace BLL.Services.Implements.DonorRequestService
             _unitOfWork = unitOfWork;
             _context = context;
         }
-        public async Task CreateAsync(
+        public async Task<Guid> CreateAsync(
             Guid donorId,
             CreateDonorRequestDto dto)
         {
@@ -48,11 +49,17 @@ namespace BLL.Services.Implements.DonorRequestService
             if (deliveryMethod == "StaffPickup" &&
                 (string.IsNullOrWhiteSpace(dto.PickupAddress) || !dto.PickupDate.HasValue))
                 throw new InvalidOperationException("Pickup address and pickup date are required for staff pickup.");
+            if (dto.PickupDate.HasValue && dto.PickupDate.Value.Date < GetEarliestPickupDate())
+                throw new InvalidOperationException(
+                    "Ngày tiếp nhận không hợp lệ. Từ 11:00, ngày sớm nhất có thể chọn là ngày mai.");
 
+            var requestId = Guid.NewGuid();
+            var now = DateTime.UtcNow;
             var request =
                 new DonationRequest
                 {
-                    Id = Guid.NewGuid(),
+                    Id = requestId,
+                    RequestCode = BuildRequestCode(requestId, now),
                     DonorId = donorId,
                     WarehouseId = dto.WarehouseId,
                     ContactName = contactName,
@@ -67,7 +74,7 @@ namespace BLL.Services.Implements.DonorRequestService
                     PickupAddress = deliveryMethod == "StaffPickup"
                         ? dto.PickupAddress!.Trim()
                         : warehouse.Address,
-                    CreateAt = DateTime.UtcNow,
+                    CreateAt = now,
                     Status = deliveryMethod == "StaffPickup"
                         ? DonationRequestStatus.WaitingReceivingStaff
                         : DonationRequestStatus.PendingStaffAssign
@@ -77,64 +84,27 @@ namespace BLL.Services.Implements.DonorRequestService
                 .DonorRequestRepository
                 .AddAsync(request);
 
-            if (deliveryMethod == "StaffPickup")
-                await AssignToAvailableReceivingBatchAsync(request);
+            await NotificationWriter.NotifyManagersNewRequestAsync(_context, request);
             await _unitOfWork.SaveChangeAsync();
+            return requestId;
         }
 
-        private async Task AssignToAvailableReceivingBatchAsync(DonationRequest request)
+        private static DateTime GetEarliestPickupDate()
         {
-            var pickupDate = request.PickupDate!.Value.Date;
-            var today = DateTime.UtcNow.Date;
-            if (pickupDate > today) return;
-
-            var batch = await _context.IntakeBatches
-                .Include(x => x.Shift)
-                .Where(x => x.WarehouseId == request.WarehouseId
-                    && x.IsActive != false
-                    && x.ReceivingTeamId.HasValue
-                    && (x.Status == "Planned" || x.Status == "Receiving"
-                        || (x.Status == "Completed" && x.Shift.ShiftDate.Date == today))
-                    && (x.Shift.Status == "Scheduled" || x.Shift.Status == "InProgress"
-                        || (x.Shift.Status == "Completed" && x.Shift.ShiftDate.Date == today))
-                    && x.Shift.ShiftDate.Date >= pickupDate
-                    && x.Shift.ShiftDate.Date <= today)
-                .OrderByDescending(x => x.Shift.ShiftDate)
-                .ThenByDescending(x => x.Shift.StartTime)
-                .FirstOrDefaultAsync();
-
-            if (batch is null) return;
-
-            if (batch.Status == "Completed")
+            TimeZoneInfo vietnamTimeZone;
+            try
             {
-                batch.Status = "Planned";
-                batch.CompletedAt = null;
-                batch.UpdateAt = DateTime.UtcNow;
-                batch.Shift.Status = "Scheduled";
-                batch.Shift.StartedAt = null;
-                batch.Shift.CompletedAt = null;
-                batch.Shift.UpdateAt = DateTime.UtcNow;
+                vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
+            }
+            catch (TimeZoneNotFoundException)
+            {
+                vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
             }
 
-            var lastRouteOrder = await _context.PickupAssignments
-                .Where(x => x.IntakeBatchId == batch.Id && x.IsActive != false)
-                .Select(x => (int?)x.RouteOrder)
-                .MaxAsync() ?? 0;
-
-            _context.PickupAssignments.Add(new PickupAssignment
-            {
-                Id = Guid.NewGuid(),
-                DonorRequestId = request.Id,
-                ShiftId = batch.ShiftId,
-                TeamId = batch.ReceivingTeamId!.Value,
-                IntakeBatchId = batch.Id,
-                RouteOrder = lastRouteOrder + 1,
-                AreaKey = request.PickupAddress,
-                Status = "Pending",
-                CreateAt = DateTime.UtcNow
-            });
-            request.Status = DonationRequestStatus.ReceivingStaffAssigned;
-            request.UpdateAt = DateTime.UtcNow;
+            var vietnamNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vietnamTimeZone);
+            var currentMinutes = vietnamNow.Hour * 60 + vietnamNow.Minute;
+            const int cutoffMinutes = 11 * 60;
+            return vietnamNow.Date.AddDays(currentMinutes >= cutoffMinutes ? 1 : 0);
         }
         public async Task UpdateAsync(Guid donorId, Guid requestId, UpdateDonorRequestDto dto)
         {
@@ -165,6 +135,10 @@ namespace BLL.Services.Implements.DonorRequestService
             {
                 throw new Exception("Warehouse not found");
             }
+
+            if (dto.PickupDate.Date < GetEarliestPickupDate())
+                throw new InvalidOperationException(
+                    "Ngày tiếp nhận không hợp lệ. Từ 11:00, ngày sớm nhất có thể chọn là ngày mai.");
 
             request.WarehouseId = dto.WarehouseId;
             request.PickupDate = DateTime.SpecifyKind(dto.PickupDate, DateTimeKind.Unspecified);
@@ -257,7 +231,7 @@ namespace BLL.Services.Implements.DonorRequestService
                 .Select(x => new DonorRequestSearchResultDto
                 {
                     Id = x.Id,
-                    Code = "DR-" + x.CreateAt.GetValueOrDefault().Year + "-" + x.Id.ToString().Substring(0, 8).ToUpper(),
+                    Code = x.RequestCode,
                     DonorName = x.ContactName,
                     PhoneNumber = x.ContactPhoneNumber,
                     DeliveryMethod = x.DeliveryMethod,
@@ -283,13 +257,16 @@ namespace BLL.Services.Implements.DonorRequestService
                    || status == DonationRequestStatus.WaitingReceivingStaff;
         }
 
+        private static string BuildRequestCode(Guid id, DateTime createdAt) =>
+            $"DR-{createdAt.Year}-{id.ToString("N")[..8].ToUpperInvariant()}";
+
         private static string GetStatusText(DonationRequestStatus status)
         {
             return status switch
             {
                 DonationRequestStatus.PendingStaffAssign => "Đang chờ phân công nhân viên",
                 DonationRequestStatus.ReceivingStaffAssigned => "Đã phân công nhân viên tiếp nhận",
-                DonationRequestStatus.WaitingReceivingStaff => "Đang chờ nhân viên tiếp nhận đến lấy",
+                DonationRequestStatus.WaitingReceivingStaff => "Đang chờ phân công nhân viên tiếp nhận",
                 DonationRequestStatus.Confirmed => "Đã xác nhận đơn quyên góp",
                 DonationRequestStatus.Reject => "Đơn quyên góp bị từ chối",
                 DonationRequestStatus.SendToClassification => "Đã chuyển sang phân loại",

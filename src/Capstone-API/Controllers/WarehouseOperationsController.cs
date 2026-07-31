@@ -94,6 +94,10 @@ public class WarehouseOperationsController(IWarehouseOperationsService service) 
     public async Task<IActionResult> Inventory([FromQuery] Guid? warehouseId, [FromQuery] string? search) =>
         Ok(await service.GetInventoryAsync(CurrentUserId, warehouseId, search));
 
+    [HttpGet("locations/{locationId:guid}/inventory")]
+    public async Task<IActionResult> LocationInventory(Guid locationId) =>
+        Ok(await service.GetLocationInventoryAsync(CurrentUserId, locationId));
+
     [HttpGet("transactions")]
     public async Task<IActionResult> Transactions([FromQuery] Guid? warehouseId, [FromQuery] string? type) =>
         Ok(await service.GetTransactionsAsync(CurrentUserId, warehouseId, type));

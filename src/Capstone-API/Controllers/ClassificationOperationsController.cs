@@ -58,5 +58,9 @@ public class ClassificationOperationsController(IClassificationOperationsService
         return NoContent();
     }
 
+    [HttpPost("grouped-batches/send-to-warehouse")]
+    public async Task<IActionResult> SendGroupedBatchesToWarehouse(SendGroupedBatchesToWarehouseDto dto) =>
+        Ok(await service.SendGroupedBatchesToWarehouseAsync(CurrentUserId, dto.GroupedBatchIds));
+
     private Guid CurrentUserId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }

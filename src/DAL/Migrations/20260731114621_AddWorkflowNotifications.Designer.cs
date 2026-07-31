@@ -4,6 +4,7 @@ using DAL;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260731114621_AddWorkflowNotifications")]
+    partial class AddWorkflowNotifications
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -785,9 +788,6 @@ namespace DAL.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<int>("ApprovedQuantity")
-                        .HasColumnType("int");
-
                     b.Property<int>("ConditionRating")
                         .HasColumnType("int");
 
@@ -806,31 +806,17 @@ namespace DAL.Migrations
                     b.Property<Guid>("DistributionRequestId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<Guid>("InventoryId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.Property<bool?>("IsActive")
                         .HasColumnType("bit");
-
-                    b.Property<int>("IssuedQuantity")
-                        .HasColumnType("int");
-
-                    b.Property<decimal>("IssuedWeight")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
 
                     b.Property<string>("Notes")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<Guid?>("ProfileId")
+                    b.Property<Guid>("ProfileId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<int>("RequestedQuantity")
                         .HasColumnType("int");
-
-                    b.Property<decimal>("RequestedWeight")
-                        .HasPrecision(18, 2)
-                        .HasColumnType("decimal(18,2)");
 
                     b.Property<DateTime?>("UpdateAt")
                         .HasColumnType("datetime2");
@@ -841,8 +827,6 @@ namespace DAL.Migrations
                     b.HasKey("Id");
 
                     b.HasIndex("DistributionRequestId");
-
-                    b.HasIndex("InventoryId");
 
                     b.HasIndex("ProfileId");
 
@@ -860,9 +844,6 @@ namespace DAL.Migrations
 
                     b.Property<DateTime?>("ApprovedAt")
                         .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("ApprovedByManagerId")
-                        .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("CarrierName")
                         .HasColumnType("nvarchar(max)");
@@ -882,36 +863,11 @@ namespace DAL.Migrations
                     b.Property<DateTime?>("EstimatedDeliveryTime")
                         .HasColumnType("datetime2");
 
-                    b.Property<string>("GhnOrderCode")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("GhnStatus")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("GhnUpdatedAt")
-                        .HasColumnType("datetime2");
-
                     b.Property<bool?>("IsActive")
                         .HasColumnType("bit");
 
-                    b.Property<string>("IssueSlipCode")
-                        .HasColumnType("nvarchar(450)");
-
-                    b.Property<string>("RecipientName")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("RecipientPhone")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
                     b.Property<string>("RejectReason")
                         .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("RequestCode")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
 
                     b.Property<string>("RequestNotes")
                         .HasColumnType("nvarchar(max)");
@@ -949,32 +905,11 @@ namespace DAL.Migrations
                     b.Property<Guid>("WarehouseId")
                         .HasColumnType("uniqueidentifier");
 
-                    b.Property<DateTime?>("WarehouseIssuedAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("WarehouseIssuedByStaffId")
-                        .HasColumnType("uniqueidentifier");
-
                     b.HasKey("Id");
-
-                    b.HasIndex("ApprovedByManagerId");
-
-                    b.HasIndex("GhnOrderCode")
-                        .IsUnique()
-                        .HasFilter("[GhnOrderCode] IS NOT NULL");
-
-                    b.HasIndex("IssueSlipCode")
-                        .IsUnique()
-                        .HasFilter("[IssueSlipCode] IS NOT NULL");
-
-                    b.HasIndex("RequestCode")
-                        .IsUnique();
 
                     b.HasIndex("UserId");
 
                     b.HasIndex("WarehouseId");
-
-                    b.HasIndex("WarehouseIssuedByStaffId");
 
                     b.ToTable("DistributionRequests");
                 });
@@ -1885,57 +1820,6 @@ namespace DAL.Migrations
                     b.ToTable("Shifts");
                 });
 
-            modelBuilder.Entity("DAL.Models.ShipmentStatusHistory", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("CreateAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("CreatedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<DateTime?>("DeleteAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("DeletedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<string>("Description")
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<Guid>("DistributionRequestId")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.Property<bool?>("IsActive")
-                        .HasColumnType("bit");
-
-                    b.Property<DateTime>("OccurredAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<string>("Source")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<string>("Status")
-                        .IsRequired()
-                        .HasColumnType("nvarchar(max)");
-
-                    b.Property<DateTime?>("UpdateAt")
-                        .HasColumnType("datetime2");
-
-                    b.Property<Guid?>("UpdatedBy")
-                        .HasColumnType("uniqueidentifier");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("DistributionRequestId");
-
-                    b.ToTable("ShipmentStatusHistories");
-                });
-
             modelBuilder.Entity("DAL.Models.StorageLocation", b =>
                 {
                     b.Property<Guid>("Id")
@@ -2786,31 +2670,19 @@ namespace DAL.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("DAL.Models.Inventory", "Inventory")
-                        .WithMany()
-                        .HasForeignKey("InventoryId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
                     b.HasOne("DAL.Models.Profile", "Profile")
                         .WithMany()
                         .HasForeignKey("ProfileId")
-                        .OnDelete(DeleteBehavior.Restrict);
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
 
                     b.Navigation("DistributionRequest");
-
-                    b.Navigation("Inventory");
 
                     b.Navigation("Profile");
                 });
 
             modelBuilder.Entity("DAL.Models.DistributionRequest", b =>
                 {
-                    b.HasOne("DAL.Models.User", "ApprovedByManager")
-                        .WithMany()
-                        .HasForeignKey("ApprovedByManagerId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
                     b.HasOne("DAL.Models.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
@@ -2823,18 +2695,9 @@ namespace DAL.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
-                    b.HasOne("DAL.Models.User", "WarehouseIssuedByStaff")
-                        .WithMany()
-                        .HasForeignKey("WarehouseIssuedByStaffId")
-                        .OnDelete(DeleteBehavior.Restrict);
-
-                    b.Navigation("ApprovedByManager");
-
                     b.Navigation("User");
 
                     b.Navigation("Warehouse");
-
-                    b.Navigation("WarehouseIssuedByStaff");
                 });
 
             modelBuilder.Entity("DAL.Models.DonationRequest", b =>
@@ -3087,17 +2950,6 @@ namespace DAL.Migrations
                     b.Navigation("Warehouse");
                 });
 
-            modelBuilder.Entity("DAL.Models.ShipmentStatusHistory", b =>
-                {
-                    b.HasOne("DAL.Models.DistributionRequest", "DistributionRequest")
-                        .WithMany("ShipmentHistory")
-                        .HasForeignKey("DistributionRequestId")
-                        .OnDelete(DeleteBehavior.Restrict)
-                        .IsRequired();
-
-                    b.Navigation("DistributionRequest");
-                });
-
             modelBuilder.Entity("DAL.Models.StorageLocation", b =>
                 {
                     b.HasOne("DAL.Models.AreaGroup", "AreaGroup")
@@ -3347,8 +3199,6 @@ namespace DAL.Migrations
             modelBuilder.Entity("DAL.Models.DistributionRequest", b =>
                 {
                     b.Navigation("Items");
-
-                    b.Navigation("ShipmentHistory");
                 });
 
             modelBuilder.Entity("DAL.Models.DonationRequest", b =>
