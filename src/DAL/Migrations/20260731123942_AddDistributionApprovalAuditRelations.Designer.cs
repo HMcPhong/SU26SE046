@@ -4,6 +4,7 @@ using DAL;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260731123942_AddDistributionApprovalAuditRelations")]
+    partial class AddDistributionApprovalAuditRelations
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -908,11 +911,6 @@ namespace DAL.Migrations
                     b.Property<string>("RejectReason")
                         .HasColumnType("nvarchar(max)");
 
-                    b.Property<string>("RequestCode")
-                        .IsRequired()
-                        .HasMaxLength(32)
-                        .HasColumnType("nvarchar(32)");
-
                     b.Property<string>("RequestNotes")
                         .HasColumnType("nvarchar(max)");
 
@@ -966,9 +964,6 @@ namespace DAL.Migrations
                     b.HasIndex("IssueSlipCode")
                         .IsUnique()
                         .HasFilter("[IssueSlipCode] IS NOT NULL");
-
-                    b.HasIndex("RequestCode")
-                        .IsUnique();
 
                     b.HasIndex("UserId");
 

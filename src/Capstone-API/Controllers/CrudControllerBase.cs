@@ -17,7 +17,7 @@ public abstract class CrudControllerBase<TEntity> : ControllerBase where TEntity
     }
 
     [HttpGet]
-    public async Task<ActionResult<List<TEntity>>> GetAll()
+    public virtual async Task<ActionResult<List<TEntity>>> GetAll()
     {
         return Ok(await _service.GetAllAsync());
     }

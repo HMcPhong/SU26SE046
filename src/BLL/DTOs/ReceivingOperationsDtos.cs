@@ -63,7 +63,8 @@ public class ReceivingRequestDto
 
 public record ReceivingTeamMemberDto(Guid Id, string FullName, string PhoneNumber);
 public record DispatchRequestDto(Guid Id, string Code, string ContactName, string PhoneNumber,
-    string DeliveryMethod, string Address, DateTime? ScheduledDate, Guid WarehouseId, string WarehouseName);
+    string DeliveryMethod, string Address, DateTime? ScheduledDate, Guid WarehouseId, string WarehouseName,
+    DateTime? CreatedAt);
 public record DispatchTeamDto(Guid Id, string TeamName, string TeamType, Guid ShiftId, string ShiftName,
     DateTime ShiftDate, string ShiftTime, Guid WarehouseId, List<ReceivingTeamMemberDto> Members);
 public record ReceivingDispatchBoardDto(List<DispatchRequestDto> Requests, List<DispatchTeamDto> Teams);

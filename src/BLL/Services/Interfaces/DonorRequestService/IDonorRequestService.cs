@@ -4,7 +4,7 @@ namespace BLL.Services.Interfaces.DonorRequestService
 {
     public interface IDonorRequestService
     {
-        Task CreateAsync(Guid donorId, CreateDonorRequestDto dto);
+        Task<Guid> CreateAsync(Guid donorId, CreateDonorRequestDto dto);
 
         Task UpdateAsync(Guid donorId, Guid requestId, UpdateDonorRequestDto dto);
 

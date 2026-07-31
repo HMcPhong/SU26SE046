@@ -47,5 +47,7 @@ namespace DAL.Models
 
         public virtual ICollection<ClassifiedBatchDonationRequest> ClassifiedBatchDonationRequests { get; set; }
             = new List<ClassifiedBatchDonationRequest>();
+        public virtual ICollection<Notification> Notifications { get; set; }
+            = new List<Notification>();
     }
 }

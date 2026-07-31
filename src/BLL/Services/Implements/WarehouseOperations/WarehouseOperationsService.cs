@@ -1,5 +1,6 @@
 using BLL.DTOs;
 using BLL.Services.Interfaces.WarehouseOperations;
+using BLL.Services.Implements.Notifications;
 using DAL;
 using DAL.Models;
 using Microsoft.EntityFrameworkCore;
@@ -388,6 +389,11 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         AddTransaction(staffId, batch.WarehouseId, "RECEIPT", "ClassifiedBatch", batch.Id,
             notes, inventory, dto.ActualItemCount, dto.ActualWeightKg, 0, dto.ActualItemCount,
             0, dto.ActualWeightKg, null, null);
+        var sourceIds = await context.ClassifiedBatchDonationRequests.Where(x => x.ClassifiedBatchId == batch.Id)
+            .Select(x => x.DonationRequestId).ToListAsync();
+        var actor = await NotificationWriter.ActorNameAsync(context, staffId);
+        await NotificationWriter.NotifyDonorsAsync(context, sourceIds, "WarehouseReceived", "Kho đã nhận hàng",
+            _ => $"batch {batch.BatchCode} được {actor} xác nhận nhập kho lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}.", staffId);
         await context.SaveChangesAsync();
         await transaction.CommitAsync();
     }
@@ -456,6 +462,10 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             dto.Notes, inventory, inventory.Quantity, inventory.TotalWeight,
             inventory.Quantity, inventory.Quantity, inventory.TotalWeight, inventory.TotalWeight,
             null, location.Id);
+        var sourceIds = await context.ClassifiedBatchDonationRequests.Where(x => x.ClassifiedBatchId == batch.Id)
+            .Select(x => x.DonationRequestId).ToListAsync();
+        await NotificationWriter.NotifyDonorsAsync(context, sourceIds, "DonationStored", "Đã lưu trữ trong kho",
+            _ => $"batch {batch.BatchCode} được lưu tại {location.LocationCode} lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}.", staffId);
         await context.SaveChangesAsync();
         await transaction.CommitAsync();
     }
@@ -562,6 +572,11 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             $"{dto.Reason}. {dto.Notes}".Trim(), inventory, dto.Quantity, dto.WeightKg,
             beforeQuantity, inventory.Quantity, beforeWeight, inventory.TotalWeight,
             inventory.StorageLocationId, null);
+        var sourceIds = await context.ClassifiedBatchDonationRequests
+            .Where(x => x.ClassifiedBatchId == inventory.ClassifiedBatchId)
+            .Select(x => x.DonationRequestId).ToListAsync();
+        await NotificationWriter.NotifyDonorsAsync(context, sourceIds, "DonationDistributed", "Đã xuất kho để phân phối",
+            _ => $"hàng được xuất kho lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}. Mục đích: {dto.Reason}.", staffId);
         await context.SaveChangesAsync();
         await transaction.CommitAsync();
     }

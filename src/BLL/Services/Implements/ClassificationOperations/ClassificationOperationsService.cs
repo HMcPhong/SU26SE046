@@ -1,5 +1,6 @@
 using BLL.DTOs;
 using BLL.Services.Interfaces.ClassificationOperations;
+using BLL.Services.Implements.Notifications;
 using DAL;
 using DAL.Models;
 using Microsoft.EntityFrameworkCore;
@@ -74,6 +75,12 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
         batch.ClassificationReceivedByStaffId = staffId;
         batch.UpdateAt = DateTime.UtcNow;
         batch.UpdatedBy = staffId;
+        var actor = await NotificationWriter.ActorNameAsync(context, staffId);
+        var sourceIds = await context.IntakeBatchDonationRequests.Where(x => x.IntakeBatchId == batchId)
+            .Select(x => x.DonationRequestId).ToListAsync();
+        await NotificationWriter.NotifyDonorsAsync(context, sourceIds, "ClassificationReceived",
+            "Bộ phận phân loại đã nhận lô",
+            _ => $"lô {batch.BatchCode} được {actor} xác nhận nhận lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}.", staffId);
         await context.SaveChangesAsync();
     }
 
@@ -174,6 +181,11 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
         batch.SentToWarehouseByStaffId = staffId;
         batch.UpdateAt = DateTime.UtcNow;
         batch.UpdatedBy = staffId;
+        var sourceIds = await context.ClassifiedBatchDonationRequests
+            .Where(x => x.ClassifiedBatchId == groupedBatchId && x.IsActive != false)
+            .Select(x => x.DonationRequestId).ToListAsync();
+        await NotificationWriter.NotifyDonorsAsync(context, sourceIds, "SentToWarehouse", "Đã chuyển sang kho",
+            _ => $"batch {batch.BatchCode} được chuyển sang kho lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}.", staffId);
         await context.SaveChangesAsync();
     }
 
@@ -193,6 +205,7 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
 
         var now = DateTime.UtcNow;
         var sent = 0;
+        var sentBatchIds = new List<Guid>();
         foreach (var batch in batches.Where(x => x.Status == "Open"))
         {
             var itemCount = batch.Items.Count(x => x.IsActive != false);
@@ -206,10 +219,22 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
             batch.SentToWarehouseByStaffId = staffId;
             batch.UpdateAt = now;
             batch.UpdatedBy = staffId;
+            sentBatchIds.Add(batch.Id);
             sent++;
         }
 
-        if (sent > 0) await context.SaveChangesAsync();
+        if (sent > 0)
+        {
+            var provenance = await context.ClassifiedBatchDonationRequests
+                .Where(x => sentBatchIds.Contains(x.ClassifiedBatchId) && x.IsActive != false)
+                .Select(x => new { x.ClassifiedBatchId, x.DonationRequestId }).ToListAsync();
+            foreach (var batch in batches.Where(x => sentBatchIds.Contains(x.Id)))
+                await NotificationWriter.NotifyDonorsAsync(context,
+                    provenance.Where(x => x.ClassifiedBatchId == batch.Id).Select(x => x.DonationRequestId),
+                    "SentToWarehouse", "Đã chuyển sang kho",
+                    _ => $"batch {batch.BatchCode} được chuyển sang kho lúc {NotificationWriter.FormatTime(now)}.", staffId);
+            await context.SaveChangesAsync();
+        }
         return new SendGroupedBatchesToWarehouseResultDto(sent, batches.Count - sent);
     }
 
@@ -220,6 +245,10 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
         if (!await context.ClassifiedItems.AnyAsync(x => x.BatchId == batchId && x.IsActive != false))
             throw new InvalidOperationException("Classify at least one item before completing the batch.");
         batch.Status = "Classified"; batch.UpdateAt = DateTime.UtcNow; batch.UpdatedBy = staffId;
+        var sourceIds = await context.IntakeBatchDonationRequests.Where(x => x.IntakeBatchId == batchId)
+            .Select(x => x.DonationRequestId).ToListAsync();
+        await NotificationWriter.NotifyDonorsAsync(context, sourceIds, "ClassificationCompleted",
+            "Đã phân loại xong", _ => $"lô {batch.BatchCode} hoàn tất phân loại lúc {NotificationWriter.FormatTime(DateTime.UtcNow)}.", staffId);
         await context.SaveChangesAsync();
     }
 

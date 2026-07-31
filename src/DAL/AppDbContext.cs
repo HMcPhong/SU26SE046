@@ -22,6 +22,7 @@ namespace DAL
         public DbSet<InspectionAnswer> InspectionAnswers => Set<InspectionAnswer>();
         public DbSet<DistributionRequest> DistributionRequests => Set<DistributionRequest>();
         public DbSet<DistributionItem> DistributionItems => Set<DistributionItem>();
+        public DbSet<ShipmentStatusHistory> ShipmentStatusHistories => Set<ShipmentStatusHistory>();
         public DbSet<DonationRequest> DonationRequests => Set<DonationRequest>();
         public DbSet<IntakeBatch> IntakeBatches => Set<IntakeBatch>();
         public DbSet<IntakeBatchDonationRequest> IntakeBatchDonationRequests => Set<IntakeBatchDonationRequest>();
@@ -41,6 +42,7 @@ namespace DAL
         public DbSet<TransferItem> TransferItems => Set<TransferItem>();
         public DbSet<Profile> Profiles => Set<Profile>();
         public DbSet<ProfileDetail> ProfileDetails => Set<ProfileDetail>();
+        public DbSet<Notification> Notifications => Set<Notification>();
 
         public AppDbContext(DbContextOptions<AppDbContext> options)
             : base(options)
@@ -149,6 +151,36 @@ namespace DAL
             modelBuilder.Entity<DonationRequest>()
                 .HasIndex(x => x.RequestCode)
                 .IsUnique();
+
+            modelBuilder.Entity<Notification>().Property(x => x.Type).HasMaxLength(60);
+            modelBuilder.Entity<Notification>().Property(x => x.Title).HasMaxLength(200);
+            modelBuilder.Entity<Notification>().Property(x => x.TargetUrl).HasMaxLength(500);
+            modelBuilder.Entity<Notification>().HasIndex(x => new { x.UserId, x.IsRead, x.CreateAt });
+            modelBuilder.Entity<Notification>()
+                .HasOne(x => x.User).WithMany(x => x.Notifications)
+                .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Notification>()
+                .HasOne(x => x.DonationRequest).WithMany(x => x.Notifications)
+                .HasForeignKey(x => x.DonationRequestId).OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<DistributionItem>()
+                .HasOne(x => x.Inventory).WithMany()
+                .HasForeignKey(x => x.InventoryId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DistributionRequest>()
+                .Property(x => x.RequestCode).HasMaxLength(32);
+            modelBuilder.Entity<DistributionRequest>()
+                .HasIndex(x => x.RequestCode).IsUnique();
+            modelBuilder.Entity<DistributionRequest>()
+                .HasIndex(x => x.IssueSlipCode).IsUnique().HasFilter("[IssueSlipCode] IS NOT NULL");
+            modelBuilder.Entity<DistributionRequest>()
+                .HasIndex(x => x.GhnOrderCode).IsUnique().HasFilter("[GhnOrderCode] IS NOT NULL");
+            modelBuilder.Entity<DistributionRequest>().HasOne(x => x.ApprovedByManager).WithMany()
+                .HasForeignKey(x => x.ApprovedByManagerId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DistributionRequest>().HasOne(x => x.WarehouseIssuedByStaff).WithMany()
+                .HasForeignKey(x => x.WarehouseIssuedByStaffId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ShipmentStatusHistory>()
+                .HasOne(x => x.DistributionRequest).WithMany(x => x.ShipmentHistory)
+                .HasForeignKey(x => x.DistributionRequestId).OnDelete(DeleteBehavior.Cascade);
 
             modelBuilder.Entity<DonationRequest>()
                 .HasOne(x => x.Donor)
