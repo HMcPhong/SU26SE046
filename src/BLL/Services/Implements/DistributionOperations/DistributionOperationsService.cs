@@ -165,9 +165,17 @@ public class DistributionOperationsService(AppDbContext context, HttpClient ghnC
         var client=ghnClient;
         client.DefaultRequestHeaders.TryAddWithoutValidation("Token",token);
         client.DefaultRequestHeaders.TryAddWithoutValidation("ShopId",shopId);
+        _=int.TryParse(configuration["Ghn:PickupDistrictId"],out var pickupDistrictId);
+        var pickupWardCode=configuration["Ghn:PickupWardCode"];
+        if(pickupDistrictId<=0||string.IsNullOrWhiteSpace(pickupWardCode))
+            throw new InvalidOperationException("GHN pickup district and ward are not configured on the server.");
         var weight=(int)Math.Ceiling(request.Items.Sum(x=>x.IssuedWeight)*1000);
-        var payload=new {payment_type_id=dto.PaymentTypeId,required_note=dto.RequiredNote??"KHONGCHOXEMHANG",
-            from_name=request.Warehouse.WarehouseName,from_phone=request.Warehouse.PhoneNumber??"0900000000",from_address=request.Warehouse.Address,
+        var payload=new {payment_type_id=dto.PaymentTypeId,service_type_id=dto.ServiceTypeId<=0?2:dto.ServiceTypeId,
+            required_note=dto.RequiredNote??"KHONGCHOXEMHANG",
+            from_name=configuration["Ghn:PickupName"]??request.Warehouse.WarehouseName,
+            from_phone=configuration["Ghn:PickupPhone"]??request.Warehouse.PhoneNumber??"0900000000",
+            from_address=configuration["Ghn:PickupAddress"]??request.Warehouse.Address,
+            from_district_id=pickupDistrictId,from_ward_code=pickupWardCode,
             to_name=request.RecipientName,to_phone=request.RecipientPhone,to_address=request.ToAddress,to_district_id=dto.ToDistrictId,to_ward_code=dto.ToWardCode,
             weight=Math.Max(weight,1),length=40,width=40,height=40,client_order_code=request.IssueSlipCode,
             items=request.Items.Select(x=>new{name=x.Inventory.ClothingType,code=x.Inventory.Sku,quantity=x.IssuedQuantity,price=0}).ToList()};
