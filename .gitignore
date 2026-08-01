@@ -12,3 +12,5 @@ artifacts/
 Thumbs.db
 backend-restart-error.log
 backend-restart.log
+backend-local-error.log
+backend-local.log
