@@ -4,6 +4,7 @@ using DAL;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace DAL.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260802094328_AddWorkScheduleTemplates")]
+    partial class AddWorkScheduleTemplates
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -74,6 +77,91 @@ namespace DAL.Migrations
                     b.ToTable("AreaGroups");
                 });
 
+            modelBuilder.Entity("DAL.Models.Cart", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("Carts");
+                });
+
+            modelBuilder.Entity("DAL.Models.CartItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CartId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ConditionRating")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CartId");
+
+                    b.HasIndex("ProfileId");
+
+                    b.ToTable("CartItems");
+                });
+
             modelBuilder.Entity("DAL.Models.Category", b =>
                 {
                     b.Property<Guid>("Id")
@@ -103,9 +191,6 @@ namespace DAL.Migrations
 
                     b.Property<bool?>("IsActive")
                         .HasColumnType("bit");
-
-                    b.Property<int?>("MinimumMatchCount")
-                        .HasColumnType("int");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -138,6 +223,138 @@ namespace DAL.Migrations
                         .HasFilter("[ParentId] IS NOT NULL");
 
                     b.ToTable("Categories");
+                });
+
+            modelBuilder.Entity("DAL.Models.ClassificationCriteria", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CriteriaDescription")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CriteriaName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("QuestionText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ClassificationCriteria");
+                });
+
+            modelBuilder.Entity("DAL.Models.ClassificationCriteriaOption", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CriteriaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("DisplayOrder")
+                        .HasColumnType("int");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CriteriaId");
+
+                    b.ToTable("ClassificationCriteriaOptions");
+                });
+
+            modelBuilder.Entity("DAL.Models.ClassificationResult", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("CriteriaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("OptionId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CriteriaId");
+
+                    b.HasIndex("OptionId");
+
+                    b.ToTable("ClassificationResults");
                 });
 
             modelBuilder.Entity("DAL.Models.ClassifiedBatch", b =>
@@ -217,6 +434,9 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int?>("ReceivedItemCount")
                         .HasColumnType("int");
 
@@ -287,6 +507,8 @@ namespace DAL.Migrations
 
                     b.HasIndex("GroupKey")
                         .IsUnique();
+
+                    b.HasIndex("ProfileId");
 
                     b.HasIndex("SentToWarehouseByStaffId");
 
@@ -427,6 +649,9 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("Size")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -461,6 +686,8 @@ namespace DAL.Migrations
 
                     b.HasIndex("ItemCode")
                         .IsUnique();
+
+                    b.HasIndex("ProfileId");
 
                     b.ToTable("ClassifiedItems");
                 });
@@ -533,6 +760,9 @@ namespace DAL.Migrations
                     b.Property<bool?>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<bool>("IsCritical")
+                        .HasColumnType("bit");
+
                     b.Property<string>("QuestionText")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
@@ -542,6 +772,10 @@ namespace DAL.Migrations
 
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Weight")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
 
                     b.HasKey("Id");
 
@@ -591,6 +825,9 @@ namespace DAL.Migrations
                     b.Property<string>("Notes")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("RequestedQuantity")
                         .HasColumnType("int");
 
@@ -609,6 +846,8 @@ namespace DAL.Migrations
                     b.HasIndex("DistributionRequestId");
 
                     b.HasIndex("InventoryId");
+
+                    b.HasIndex("ProfileId");
 
                     b.ToTable("DistributionItems");
                 });
@@ -1084,6 +1323,9 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<Guid?>("ProfileId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<int>("Quantity")
                         .HasColumnType("int");
 
@@ -1137,6 +1379,8 @@ namespace DAL.Migrations
                     b.HasIndex("AreaGroupId");
 
                     b.HasIndex("ClassifiedBatchId");
+
+                    b.HasIndex("ProfileId");
 
                     b.HasIndex("Sku")
                         .IsUnique();
@@ -1392,6 +1636,99 @@ namespace DAL.Migrations
                     b.HasIndex("TeamId");
 
                     b.ToTable("PickupAssignments");
+                });
+
+            modelBuilder.Entity("DAL.Models.Profile", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AgeGroup")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Gender")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("Size")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("Profiles");
+                });
+
+            modelBuilder.Entity("DAL.Models.ProfileDetail", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AttributeName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AttributeValue")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("ProfileId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProfileId");
+
+                    b.ToTable("ProfileDetails");
                 });
 
             modelBuilder.Entity("DAL.Models.Role", b =>
@@ -2309,6 +2646,66 @@ namespace DAL.Migrations
                     b.Navigation("Area");
                 });
 
+            modelBuilder.Entity("DAL.Models.Cart", b =>
+                {
+                    b.HasOne("DAL.Models.User", "User")
+                        .WithMany("Carts")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("DAL.Models.CartItem", b =>
+                {
+                    b.HasOne("DAL.Models.Cart", "Cart")
+                        .WithMany("CartItems")
+                        .HasForeignKey("CartId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DAL.Models.Profile", "Profile")
+                        .WithMany("CartItems")
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Cart");
+
+                    b.Navigation("Profile");
+                });
+
+            modelBuilder.Entity("DAL.Models.ClassificationCriteriaOption", b =>
+                {
+                    b.HasOne("DAL.Models.ClassificationCriteria", "Criteria")
+                        .WithMany("Options")
+                        .HasForeignKey("CriteriaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Criteria");
+                });
+
+            modelBuilder.Entity("DAL.Models.ClassificationResult", b =>
+                {
+                    b.HasOne("DAL.Models.ClassificationCriteria", "Criteria")
+                        .WithMany("Results")
+                        .HasForeignKey("CriteriaId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DAL.Models.ClassificationCriteriaOption", "Option")
+                        .WithMany("Results")
+                        .HasForeignKey("OptionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Criteria");
+
+                    b.Navigation("Option");
+                });
+
             modelBuilder.Entity("DAL.Models.ClassifiedBatch", b =>
                 {
                     b.HasOne("DAL.Models.WarehouseArea", "Area")
@@ -2319,6 +2716,11 @@ namespace DAL.Migrations
                     b.HasOne("DAL.Models.AreaGroup", "Group")
                         .WithMany()
                         .HasForeignKey("GroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.Profile", "Profile")
+                        .WithMany("ClassifiedBatches")
+                        .HasForeignKey("ProfileId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("DAL.Models.User", "SentToWarehouseByStaff")
@@ -2345,6 +2747,8 @@ namespace DAL.Migrations
                     b.Navigation("Area");
 
                     b.Navigation("Group");
+
+                    b.Navigation("Profile");
 
                     b.Navigation("SentToWarehouseByStaff");
 
@@ -2401,11 +2805,18 @@ namespace DAL.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("DAL.Models.Profile", "Profile")
+                        .WithMany("ClassifiedItems")
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("Batch");
 
                     b.Navigation("ClassifiedBatch");
 
                     b.Navigation("ClassifiedByStaff");
+
+                    b.Navigation("Profile");
                 });
 
             modelBuilder.Entity("DAL.Models.ConditionAnswer", b =>
@@ -2433,9 +2844,16 @@ namespace DAL.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("DAL.Models.Profile", "Profile")
+                        .WithMany()
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.Navigation("DistributionRequest");
 
                     b.Navigation("Inventory");
+
+                    b.Navigation("Profile");
                 });
 
             modelBuilder.Entity("DAL.Models.DistributionRequest", b =>
@@ -2589,6 +3007,11 @@ namespace DAL.Migrations
                         .HasForeignKey("ClassifiedBatchId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("DAL.Models.Profile", "Profile")
+                        .WithMany()
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("DAL.Models.StorageLocation", "StorageLocation")
                         .WithMany("Inventories")
                         .HasForeignKey("StorageLocationId")
@@ -2603,6 +3026,8 @@ namespace DAL.Migrations
                     b.Navigation("AreaGroup");
 
                     b.Navigation("ClassifiedBatch");
+
+                    b.Navigation("Profile");
 
                     b.Navigation("StorageLocation");
 
@@ -2690,6 +3115,17 @@ namespace DAL.Migrations
                     b.Navigation("Shift");
 
                     b.Navigation("Team");
+                });
+
+            modelBuilder.Entity("DAL.Models.ProfileDetail", b =>
+                {
+                    b.HasOne("DAL.Models.Profile", "Profile")
+                        .WithMany("Details")
+                        .HasForeignKey("ProfileId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Profile");
                 });
 
             modelBuilder.Entity("DAL.Models.Shift", b =>
@@ -2930,6 +3366,23 @@ namespace DAL.Migrations
                     b.Navigation("Inventories");
                 });
 
+            modelBuilder.Entity("DAL.Models.Cart", b =>
+                {
+                    b.Navigation("CartItems");
+                });
+
+            modelBuilder.Entity("DAL.Models.ClassificationCriteria", b =>
+                {
+                    b.Navigation("Options");
+
+                    b.Navigation("Results");
+                });
+
+            modelBuilder.Entity("DAL.Models.ClassificationCriteriaOption", b =>
+                {
+                    b.Navigation("Results");
+                });
+
             modelBuilder.Entity("DAL.Models.ClassifiedBatch", b =>
                 {
                     b.Navigation("DonationRequestSources");
@@ -3000,6 +3453,17 @@ namespace DAL.Migrations
                     b.Navigation("Members");
                 });
 
+            modelBuilder.Entity("DAL.Models.Profile", b =>
+                {
+                    b.Navigation("CartItems");
+
+                    b.Navigation("ClassifiedBatches");
+
+                    b.Navigation("ClassifiedItems");
+
+                    b.Navigation("Details");
+                });
+
             modelBuilder.Entity("DAL.Models.Role", b =>
                 {
                     b.Navigation("Users");
@@ -3026,6 +3490,8 @@ namespace DAL.Migrations
 
             modelBuilder.Entity("DAL.Models.User", b =>
                 {
+                    b.Navigation("Carts");
+
                     b.Navigation("DonationRequests");
 
                     b.Navigation("Notifications");

@@ -18,10 +18,17 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         if (!await context.Warehouses.AnyAsync(x => x.Id == dto.WarehouseId && x.IsActive != false))
             throw new InvalidOperationException("Warehouse not found.");
 
-        var definitions = new[]
+        var template = await context.WorkScheduleTemplates.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.WarehouseId == dto.WarehouseId
+                && x.Year == date.Year && x.IsActive != false);
+        var definitions = template is null ? new[]
         {
             ("Ca sáng", new TimeSpan(8, 0, 0), new TimeSpan(11, 0, 0)),
             ("Ca chiều", new TimeSpan(13, 0, 0), new TimeSpan(17, 0, 0))
+        } : new[]
+        {
+            ("Ca sáng", template.MorningStartTime, template.MorningEndTime),
+            ("Ca chiều", template.AfternoonStartTime, template.AfternoonEndTime)
         };
 
         foreach (var definition in definitions)
@@ -62,6 +69,47 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
             excludedDates.Add(holiday.Date);
         }
 
+        // Preserve the previous Monday-Friday behavior for older clients that do not
+        // send WorkingDays yet, while allowing managers to define the company schedule.
+        var workingDaySet = (dto.WorkingDays is { Count: > 0 }
+                ? dto.WorkingDays
+                : [DayOfWeek.Monday, DayOfWeek.Tuesday, DayOfWeek.Wednesday,
+                    DayOfWeek.Thursday, DayOfWeek.Friday])
+            .Distinct()
+            .ToHashSet();
+        if (workingDaySet.Any(day => !Enum.IsDefined(day)))
+            throw new InvalidOperationException("Every working day must be a valid day of week.");
+
+        var morningStart = dto.MorningStartTime ?? new TimeSpan(8, 0, 0);
+        var morningEnd = dto.MorningEndTime ?? new TimeSpan(11, 0, 0);
+        var afternoonStart = dto.AfternoonStartTime ?? new TimeSpan(13, 0, 0);
+        var afternoonEnd = dto.AfternoonEndTime ?? new TimeSpan(17, 0, 0);
+        if (morningStart >= morningEnd)
+            throw new InvalidOperationException("Morning end time must be after morning start time.");
+        if (afternoonStart >= afternoonEnd)
+            throw new InvalidOperationException("Afternoon end time must be after afternoon start time.");
+        if (morningEnd > afternoonStart)
+            throw new InvalidOperationException("Morning shift must end before the afternoon shift starts.");
+
+        var template = await context.WorkScheduleTemplates
+            .FirstOrDefaultAsync(x => x.WarehouseId == dto.WarehouseId && x.Year == dto.Year);
+        if (template is null)
+        {
+            template = new WorkScheduleTemplate
+            {
+                Id = Guid.NewGuid(), WarehouseId = dto.WarehouseId, Year = dto.Year,
+                CreateAt = DateTime.UtcNow
+            };
+            context.WorkScheduleTemplates.Add(template);
+        }
+        template.WorkingDays = string.Join(',', workingDaySet.OrderBy(day => day == DayOfWeek.Sunday ? 7 : (int)day));
+        template.MorningStartTime = morningStart;
+        template.MorningEndTime = morningEnd;
+        template.AfternoonStartTime = afternoonStart;
+        template.AfternoonEndTime = afternoonEnd;
+        template.UpdateAt = DateTime.UtcNow;
+        template.IsActive = true;
+
         var yearStart = new DateTime(dto.Year, 1, 1);
         var yearEnd = new DateTime(dto.Year + 1, 1, 1);
         var existing = await context.Shifts.AsNoTracking()
@@ -72,16 +120,15 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         var existingKeys = existing.Select(x => (x.Date, x.StartTime)).ToHashSet();
         var definitions = new[]
         {
-            ("Ca sáng", new TimeSpan(8, 0, 0), new TimeSpan(11, 0, 0)),
-            ("Ca chiều", new TimeSpan(13, 0, 0), new TimeSpan(17, 0, 0))
+            ("Ca sáng", morningStart, morningEnd),
+            ("Ca chiều", afternoonStart, afternoonEnd)
         };
         var workingDays = 0;
         var created = 0;
         var skipped = 0;
         for (var date = yearStart; date < yearEnd; date = date.AddDays(1))
         {
-            if (date.DayOfWeek is DayOfWeek.Saturday or DayOfWeek.Sunday
-                || excludedDates.Contains(date.Date))
+            if (!workingDaySet.Contains(date.DayOfWeek) || excludedDates.Contains(date.Date))
                 continue;
             workingDays++;
             foreach (var definition in definitions)
@@ -149,6 +196,49 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         shift.DeleteAt = DateTime.UtcNow;
         shift.UpdateAt = DateTime.UtcNow;
         await context.SaveChangesAsync();
+    }
+
+    public async Task<DeleteYearShiftsResultDto> DeleteYearShiftsAsync(DeleteYearShiftsDto dto)
+    {
+        if (dto.Year is < 2020 or > 2100)
+            throw new InvalidOperationException("Year must be between 2020 and 2100.");
+        if (!await context.Warehouses.AnyAsync(x => x.Id == dto.WarehouseId && x.IsActive != false))
+            throw new InvalidOperationException("Warehouse not found.");
+
+        var start = new DateTime(dto.Year, 1, 1);
+        var end = start.AddYears(1);
+        var shifts = await context.Shifts.Where(x => x.WarehouseId == dto.WarehouseId
+            && x.ShiftDate >= start && x.ShiftDate < end && x.IsActive != false).ToListAsync();
+        var shiftIds = shifts.Select(x => x.Id).ToList();
+        var protectedIds = new HashSet<Guid>();
+        if (shiftIds.Count > 0)
+        {
+            protectedIds.UnionWith(await context.OperationalTeams.Where(x => shiftIds.Contains(x.ShiftId)
+                && x.IsActive != false).Select(x => x.ShiftId).Distinct().ToListAsync());
+            protectedIds.UnionWith(await context.PickupAssignments.Where(x => shiftIds.Contains(x.ShiftId)
+                && x.IsActive != false).Select(x => x.ShiftId).Distinct().ToListAsync());
+            protectedIds.UnionWith(await context.IntakeBatches.Where(x => shiftIds.Contains(x.ShiftId)
+                && x.IsActive != false).Select(x => x.ShiftId).Distinct().ToListAsync());
+        }
+
+        var deletable = shifts.Where(x => x.Status == "Scheduled" && !protectedIds.Contains(x.Id)).ToList();
+        var now = DateTime.UtcNow;
+        foreach (var shift in deletable)
+        {
+            shift.IsActive = false;
+            shift.DeleteAt = now;
+            shift.UpdateAt = now;
+        }
+        var templates = await context.WorkScheduleTemplates.Where(x => x.WarehouseId == dto.WarehouseId
+            && x.Year == dto.Year && x.IsActive != false).ToListAsync();
+        foreach (var template in templates)
+        {
+            template.IsActive = false;
+            template.DeleteAt = now;
+            template.UpdateAt = now;
+        }
+        await context.SaveChangesAsync();
+        return new DeleteYearShiftsResultDto(deletable.Count, shifts.Count - deletable.Count);
     }
 
     public async Task<Guid> CreateTeamAsync(CreateReceivingTeamDto dto)

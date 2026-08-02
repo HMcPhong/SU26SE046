@@ -19,8 +19,6 @@ namespace DAL.Models
         // Navigation
         public virtual Role Role { get; set; } = null!;
         public virtual Warehouse? Warehouse { get; set; }
-        public virtual ICollection<Cart> Carts { get; set; }
-            = new List<Cart>();
         public virtual ICollection<DonationRequest> DonationRequests { get; set; }
             = new List<DonationRequest>();
         public virtual ICollection<UserVerificationCode> VerificationCodes { get; set; }

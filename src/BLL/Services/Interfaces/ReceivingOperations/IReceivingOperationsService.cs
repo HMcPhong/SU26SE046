@@ -6,6 +6,7 @@ public interface IReceivingOperationsService
 {
     Task GenerateStandardShiftsAsync(GenerateShiftsDto dto);
     Task<GenerateYearShiftsResultDto> GenerateYearShiftsAsync(GenerateYearShiftsDto dto);
+    Task<DeleteYearShiftsResultDto> DeleteYearShiftsAsync(DeleteYearShiftsDto dto);
     Task UpdateShiftAsync(Guid shiftId, UpdateManagerShiftDto dto);
     Task DeleteShiftAsync(Guid shiftId);
     Task<Guid> CreateTeamAsync(CreateReceivingTeamDto dto);
