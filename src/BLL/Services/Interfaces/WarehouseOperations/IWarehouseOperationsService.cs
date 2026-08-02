@@ -8,6 +8,7 @@ public interface IWarehouseOperationsService
     Task<WarehouseLayoutDto> GetLayoutAsync(Guid userId, Guid? warehouseId);
     Task<IReadOnlyList<WarehouseInboundBatchDto>> GetInboundBatchesAsync(Guid userId, Guid? warehouseId);
     Task<IReadOnlyList<WarehouseIntakeTraceDto>> GetIntakeTracesAsync(Guid userId, Guid? warehouseId);
+    Task<Guid> CreateWarehouseAsync(Guid userId, CreateWarehouseDto dto);
     Task<Guid> CreateAreaAsync(Guid userId, SaveWarehouseAreaDto dto);
     Task UpdateAreaAsync(Guid userId, Guid areaId, SaveWarehouseAreaDto dto);
     Task DeleteAreaAsync(Guid userId, Guid areaId);

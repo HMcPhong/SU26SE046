@@ -61,6 +61,8 @@ public record WarehouseClassifiedBatchTraceDto(Guid Id, string BatchCode, string
 
 public record SaveWarehouseAreaDto(Guid WarehouseId, string AreaName, string? Description,
     decimal CapacityKg);
+public record CreateWarehouseDto(string WarehouseName, string Address, string? PhoneNumber,
+    string? Email, string? Description, decimal TotalCapacityKg);
 public record SaveWarehouseGroupDto(Guid AreaId, string GroupName, string? Description,
     decimal CapacityKg);
 public record SaveStorageLocationDto(Guid AreaGroupId, string LocationCode, string AisleCode,

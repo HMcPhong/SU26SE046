@@ -27,6 +27,11 @@ public class WarehouseOperationsController(IWarehouseOperationsService service) 
     public async Task<IActionResult> IntakeTraces([FromQuery] Guid? warehouseId) =>
         Ok(await service.GetIntakeTracesAsync(CurrentUserId, warehouseId));
 
+    [HttpPost("warehouses")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> CreateWarehouse(CreateWarehouseDto dto) =>
+        Ok(new { id = await service.CreateWarehouseAsync(CurrentUserId, dto) });
+
     [HttpPost("areas")]
     [Authorize(Roles = "Manager")]
     public async Task<IActionResult> CreateArea(SaveWarehouseAreaDto dto) =>

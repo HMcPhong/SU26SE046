@@ -9,6 +9,46 @@ namespace BLL.Services.Implements.WarehouseOperations;
 
 public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperationsService
 {
+    public async Task<Guid> CreateWarehouseAsync(Guid userId, CreateWarehouseDto dto)
+    {
+        await RequireManagerAsync(userId);
+        var name = dto.WarehouseName?.Trim() ?? string.Empty;
+        var address = dto.Address?.Trim() ?? string.Empty;
+        if (name.Length is < 3 or > 150)
+            throw new InvalidOperationException("Warehouse name must contain 3-150 characters.");
+        if (address.Length is < 10 or > 500)
+            throw new InvalidOperationException("Warehouse address must contain 10-500 characters.");
+        if (dto.TotalCapacityKg <= 0)
+            throw new InvalidOperationException("Warehouse capacity must be greater than zero.");
+        if (dto.TotalCapacityKg > 10_000_000)
+            throw new InvalidOperationException("Warehouse capacity is too large.");
+        if (!string.IsNullOrWhiteSpace(dto.Email)
+            && !System.Net.Mail.MailAddress.TryCreate(dto.Email.Trim(), out _))
+            throw new InvalidOperationException("Warehouse email format is invalid.");
+
+        var normalizedName = name.ToLower();
+        var normalizedAddress = address.ToLower();
+        if (await context.Warehouses.AnyAsync(x => x.IsActive != false
+                && x.WarehouseName.ToLower() == normalizedName))
+            throw new InvalidOperationException("An active warehouse with this name already exists.");
+        if (await context.Warehouses.AnyAsync(x => x.IsActive != false
+                && x.Address.ToLower() == normalizedAddress))
+            throw new InvalidOperationException("An active warehouse with this address already exists.");
+
+        var warehouse = new Warehouse
+        {
+            Id = Guid.NewGuid(), WarehouseName = name, Address = address,
+            PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim(),
+            Email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant(),
+            Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim(),
+            TotalCapacityKg = dto.TotalCapacityKg, CurrentWeight = 0,
+            CreateAt = DateTime.UtcNow, CreatedBy = userId, IsActive = true
+        };
+        context.Warehouses.Add(warehouse);
+        await context.SaveChangesAsync();
+        return warehouse.Id;
+    }
+
     public async Task<WarehouseLayoutDto> GetLayoutAsync(Guid userId, Guid? requestedWarehouseId)
     {
         var warehouseId = await ResolveWarehouseIdAsync(userId, requestedWarehouseId);
@@ -722,6 +762,10 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
     private async Task EnsureDefaultLayoutAsync(Guid warehouseId)
     {
         if (await context.StorageLocations.AnyAsync(x => x.WarehouseId == warehouseId && x.IsActive != false)) return;
+        var warehouseCapacity = await context.Warehouses.Where(x => x.Id == warehouseId)
+            .Select(x => x.TotalCapacityKg).SingleAsync();
+        var areaCapacity = warehouseCapacity / 3m;
+        var locationCapacity = areaCapacity / 6m;
         var definitions = new[]
         {
             ("CHARITY", "Khu hàng từ thiện", "Charity"),
@@ -733,13 +777,13 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             var area = new WarehouseArea
             {
                 Id = Guid.NewGuid(), WarehouseId = warehouseId, AreaName = areaName,
-                Description = $"Khu vực kiểm soát cho hướng xử lý {direction}", CapacityKg = 5000,
+                Description = $"Khu vực kiểm soát cho hướng xử lý {direction}", CapacityKg = areaCapacity,
                 CurrentKg = 0, CreateAt = DateTime.UtcNow, IsActive = true
             };
             var group = new AreaGroup
             {
                 Id = Guid.NewGuid(), AreaId = area.Id, GroupName = $"Dãy {areaCode}-A",
-                Description = "Dãy lưu trữ tiêu chuẩn", CapacityKg = 5000, CurrentKg = 0,
+                Description = "Dãy lưu trữ tiêu chuẩn", CapacityKg = areaCapacity, CurrentKg = 0,
                 CreateAt = DateTime.UtcNow, IsActive = true
             };
             context.WarehouseAreas.Add(area);
@@ -753,7 +797,7 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
                     Id = Guid.NewGuid(), WarehouseId = warehouseId, AreaId = area.Id,
                     AreaGroupId = group.Id, LocationCode = code, AisleCode = "A01",
                     RackCode = $"R{rack:00}", ShelfCode = $"S{shelf:00}", BinCode = "B01",
-                    PreferredProcessingDirection = direction, CapacityKg = 300,
+                    PreferredProcessingDirection = direction, CapacityKg = locationCapacity,
                     Status = "Available", CreateAt = DateTime.UtcNow, IsActive = true
                 });
             }
