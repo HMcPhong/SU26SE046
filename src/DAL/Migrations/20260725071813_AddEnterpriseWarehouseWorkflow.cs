@@ -12,6 +12,17 @@ namespace DAL.Migrations
         protected override void Up(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.Sql("""
+                IF NOT EXISTS (SELECT 1 FROM Warehouses WHERE Id = 'B17468FF-CBE1-46A0-8375-890B50CD2F99')
+                INSERT INTO Warehouses
+                    (Id, WarehouseName, Address, PhoneNumber, Email, Description,
+                     TotalCapacityKg, CurrentWeight, CreateAt, IsActive)
+                VALUES
+                    ('B17468FF-CBE1-46A0-8375-890B50CD2F99', N'Kho Thủ Đức - Võ Văn Ngân',
+                     N'1 Võ Văn Ngân, Phường Thủ Đức, Thành phố Thủ Đức, TP. Hồ Chí Minh',
+                     '0900000010', 'thuduc.warehouse@rethreads.local',
+                     N'Kho tiếp nhận và phân phối chính tại Thành phố Thủ Đức',
+                     15000, 0, SYSUTCDATETIME(), 1);
+
                 IF NOT EXISTS (SELECT 1 FROM Users WHERE Id = '87777777-7777-7777-7777-777777777777')
                 INSERT INTO Users (Id, FullName, UserName, Email, PasswordHash, PhoneNumber, Address, RoleId, WarehouseId, UserStatus, CreateAt, IsActive)
                 VALUES ('87777777-7777-7777-7777-777777777777', N'Warehouse Staff Demo', 'warehouse.staff',
