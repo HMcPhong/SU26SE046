@@ -8,15 +8,10 @@ namespace DAL
         public DbSet<Role> Roles => Set<Role>();
         public DbSet<User> Users => Set<User>();
         public DbSet<UserVerificationCode> UserVerificationCodes => Set<UserVerificationCode>();
-        public DbSet<Cart> Carts => Set<Cart>();
-        public DbSet<CartItem> CartItems => Set<CartItem>();
         public DbSet<Category> Categories => Set<Category>();
         public DbSet<ClassifiedItem> ClassifiedItems => Set<ClassifiedItem>();
         public DbSet<ClassifiedBatch> ClassifiedBatches => Set<ClassifiedBatch>();
         public DbSet<ClassifiedBatchDonationRequest> ClassifiedBatchDonationRequests => Set<ClassifiedBatchDonationRequest>();
-        public DbSet<ClassificationCriteria> ClassificationCriteria => Set<ClassificationCriteria>();
-        public DbSet<ClassificationCriteriaOption> ClassificationCriteriaOptions => Set<ClassificationCriteriaOption>();
-        public DbSet<ClassificationResult> ClassificationResults => Set<ClassificationResult>();
         public DbSet<ConditionQuestion> ConditionQuestions => Set<ConditionQuestion>();
         public DbSet<ConditionAnswer> ConditionAnswers => Set<ConditionAnswer>();
         public DbSet<InspectionAnswer> InspectionAnswers => Set<InspectionAnswer>();
@@ -36,12 +31,11 @@ namespace DAL
         public DbSet<AreaGroup> AreaGroups => Set<AreaGroup>();
         public DbSet<StorageLocation> StorageLocations => Set<StorageLocation>();
         public DbSet<Shift> Shifts => Set<Shift>();
+        public DbSet<WorkScheduleTemplate> WorkScheduleTemplates => Set<WorkScheduleTemplate>();
         public DbSet<OperationalTeam> OperationalTeams => Set<OperationalTeam>();
         public DbSet<TeamMember> TeamMembers => Set<TeamMember>();
         public DbSet<TransferRequest> TransferRequests => Set<TransferRequest>();
         public DbSet<TransferItem> TransferItems => Set<TransferItem>();
-        public DbSet<Profile> Profiles => Set<Profile>();
-        public DbSet<ProfileDetail> ProfileDetails => Set<ProfileDetail>();
         public DbSet<Notification> Notifications => Set<Notification>();
 
         public AppDbContext(DbContextOptions<AppDbContext> options)
@@ -54,6 +48,13 @@ namespace DAL
             base.OnModelCreating(modelBuilder);
 
             modelBuilder.Entity<User>().HasOne(u => u.Role).WithMany(r => r.Users).HasForeignKey(u => u.RoleId);
+            modelBuilder.Entity<WorkScheduleTemplate>()
+                .HasIndex(x => new { x.WarehouseId, x.Year })
+                .IsUnique();
+            modelBuilder.Entity<WorkScheduleTemplate>()
+                .HasOne(x => x.Warehouse).WithMany()
+                .HasForeignKey(x => x.WarehouseId)
+                .OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<User>().HasIndex(x => x.UserName);
             modelBuilder.Entity<User>().HasIndex(x => x.Email);
             modelBuilder.Entity<User>().HasIndex(x => x.PhoneNumber);
@@ -304,18 +305,6 @@ namespace DAL
                 .HasOne(x => x.DestinationLocation)
                 .WithMany()
                 .HasForeignKey(x => x.DestinationLocationId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            modelBuilder.Entity<ClassificationResult>()
-                .HasOne(x => x.Criteria)
-                .WithMany(x => x.Results)
-                .HasForeignKey(x => x.CriteriaId)
-                .OnDelete(DeleteBehavior.Restrict);
-
-            modelBuilder.Entity<ClassificationResult>()
-                .HasOne(x => x.Option)
-                .WithMany(x => x.Results)
-                .HasForeignKey(x => x.OptionId)
                 .OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<InspectionAnswer>()

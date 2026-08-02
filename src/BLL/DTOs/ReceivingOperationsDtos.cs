@@ -1,8 +1,12 @@
 namespace BLL.DTOs;
 
 public record GenerateShiftsDto(Guid WarehouseId, DateTime Date);
-public record GenerateYearShiftsDto(Guid WarehouseId, int Year, List<DateTime>? HolidayDates);
+public record GenerateYearShiftsDto(Guid WarehouseId, int Year, List<DateTime>? HolidayDates,
+    List<DayOfWeek>? WorkingDays, TimeSpan? MorningStartTime, TimeSpan? MorningEndTime,
+    TimeSpan? AfternoonStartTime, TimeSpan? AfternoonEndTime);
 public record GenerateYearShiftsResultDto(int WorkingDays, int CreatedShifts, int SkippedExisting);
+public record DeleteYearShiftsDto(Guid WarehouseId, int Year);
+public record DeleteYearShiftsResultDto(int DeletedShifts, int SkippedOperationalShifts);
 public record UpdateManagerShiftDto(Guid WarehouseId, string ShiftName, DateTime ShiftDate,
     TimeSpan StartTime, TimeSpan EndTime);
 public record CreateReceivingTeamDto(Guid ShiftId, string TeamName, List<Guid> StaffIds,

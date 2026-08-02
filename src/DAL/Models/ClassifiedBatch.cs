@@ -5,7 +5,6 @@ namespace DAL.Models;
 public class ClassifiedBatch : BaseEntity
 {
     public Guid WarehouseId { get; set; }
-    public Guid? ProfileId { get; set; }
     public Guid? GroupId { get; set; }
     public Guid? AreaId { get; set; }
     public Guid? FabricTypeId { get; set; }
@@ -39,7 +38,6 @@ public class ClassifiedBatch : BaseEntity
     public int? ReceivedItemCount { get; set; }
     public string? WarehouseReceiptNotes { get; set; }
     public virtual Warehouse Warehouse { get; set; } = null!;
-    public virtual Profile? Profile { get; set; }
     public virtual AreaGroup? Group { get; set; }
     public virtual WarehouseArea? Area { get; set; }
     public virtual User? SentToWarehouseByStaff { get; set; }

@@ -109,9 +109,19 @@ public class ClassificationOperationsService(AppDbContext context) : IClassifica
                 ?? throw new InvalidOperationException("An answer does not belong to its condition question.");
             ratings.Add(answer.ConditionRating);
         }
-        var rating = ratings.Contains(3) ? 3 : ratings.Count(x => x == 2) >= 2 ? 2 : 1;
-        var grade = await context.Categories.FirstOrDefaultAsync(x => x.Type == ConditionGrade
-            && x.Code == $"GRADE_{Grade(rating)}" && x.IsActive != false)
+        var gradeRules = await context.Categories.Where(x => x.Type == ConditionGrade
+            && x.IsActive != false).ToListAsync();
+        var gradeB = gradeRules.FirstOrDefault(x => x.Code == "GRADE_B")
+            ?? throw new InvalidOperationException("Grade B is not configured.");
+        var gradeC = gradeRules.FirstOrDefault(x => x.Code == "GRADE_C")
+            ?? throw new InvalidOperationException("Grade C is not configured.");
+        var minimumB = Math.Max(1, gradeB.MinimumMatchCount ?? 2);
+        var minimumC = Math.Max(1, gradeC.MinimumMatchCount ?? 1);
+        // The more severe grade has priority. A is the fallback when neither
+        // configured threshold is reached.
+        var rating = ratings.Count(x => x == 3) >= minimumC ? 3
+            : ratings.Count(x => x == 2) >= minimumB ? 2 : 1;
+        var grade = gradeRules.FirstOrDefault(x => x.Code == $"GRADE_{Grade(rating)}")
             ?? throw new InvalidOperationException("The condition grade category is not configured.");
         var item = new ClassifiedItem
         {

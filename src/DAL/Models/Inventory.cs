@@ -9,7 +9,6 @@ namespace DAL.Models
         public Guid? AreaGroupId { get; set; }
         public Guid? StorageLocationId { get; set; }
         public Guid? ClassifiedBatchId { get; set; }
-        public Guid? ProfileId { get; set; }
         public Guid? FabricTypeId { get; set; }
         public Guid? GarmentGroupId { get; set; }
         public Guid? ClothingTypeId { get; set; }
@@ -35,7 +34,6 @@ namespace DAL.Models
         public virtual AreaGroup? AreaGroup { get; set; }
         public virtual StorageLocation? StorageLocation { get; set; }
         public virtual ClassifiedBatch? ClassifiedBatch { get; set; }
-        public virtual Profile? Profile { get; set; }
         public virtual ICollection<TransactionItem> TransactionItems { get; set; } = new List<TransactionItem>();
     }
 }
