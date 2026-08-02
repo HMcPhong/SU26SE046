@@ -9,7 +9,8 @@ public record CreateDistributionRequestDto(Guid WarehouseId, string RecipientNam
     string ToAddress, string? Notes, List<CreateDistributionItemDto> Items);
 public record ApproveDistributionDto(bool Approved, string? Notes);
 public record IssueDistributionDto(string? Notes);
-public record CreateGhnShipmentDto(int PaymentTypeId, string? RequiredNote, int ToDistrictId, string ToWardCode);
+public record CreateGhnShipmentDto(int PaymentTypeId, string? RequiredNote, int ToDistrictId,
+    string ToWardCode, int ServiceTypeId = 2);
 public record DistributionItemViewDto(Guid Id, Guid InventoryId, string BatchCode, string Sku,
     string ClothingType, string FabricType, string Gender, string TargetUser, string Size,
     int RequestedQuantity, int ApprovedQuantity, int IssuedQuantity, decimal RequestedWeight, decimal IssuedWeight);

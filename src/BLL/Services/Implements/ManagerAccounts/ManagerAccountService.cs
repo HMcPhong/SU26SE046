@@ -50,7 +50,7 @@ public partial class ManagerAccountService(AppDbContext context) : IManagerAccou
             PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password), RoleId = role.Id,
             WarehouseId = WarehouseRoles.Contains(role.RoleName) ? dto.WarehouseId : null,
             Address = dto.Address.Trim(), UserStatus = "Active", EmailConfirmed = true,
-            PhoneNumberConfirmed = true, IsActive = true, CreateAt = now, CreatedBy = managerId
+            IsActive = true, CreateAt = now, CreatedBy = managerId
         };
         context.Users.Add(user);
         await context.SaveChangesAsync();

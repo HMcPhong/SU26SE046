@@ -15,7 +15,6 @@ namespace DAL.Models
         public string Address { get; set; } = string.Empty;
         public string UserStatus { get; set; } = string.Empty;
         public bool EmailConfirmed { get; set; }
-        public bool PhoneNumberConfirmed { get; set; }
         public string? DonationPoint { get; set; }
         // Navigation
         public virtual Role Role { get; set; } = null!;

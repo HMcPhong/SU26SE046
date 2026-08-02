@@ -1,4 +1,5 @@
 ﻿using BLL.DTOs;
+using BLL.Common;
 using BLL.Services.Interfaces.DonorRequestService;
 using BLL.Services.Implements.Notifications;
 using DAL;
@@ -91,17 +92,7 @@ namespace BLL.Services.Implements.DonorRequestService
 
         private static DateTime GetEarliestPickupDate()
         {
-            TimeZoneInfo vietnamTimeZone;
-            try
-            {
-                vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("Asia/Ho_Chi_Minh");
-            }
-            catch (TimeZoneNotFoundException)
-            {
-                vietnamTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
-            }
-
-            var vietnamNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vietnamTimeZone);
+            var vietnamNow = VietnamTime.Now;
             var currentMinutes = vietnamNow.Hour * 60 + vietnamNow.Minute;
             const int cutoffMinutes = 11 * 60;
             return vietnamNow.Date.AddDays(currentMinutes >= cutoffMinutes ? 1 : 0);
