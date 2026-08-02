@@ -1,4 +1,5 @@
 using System.IdentityModel.Tokens.Jwt;
+using System.Security.Authentication;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
@@ -51,9 +52,9 @@ public partial class AuthService(
         var user = await unitOfWork.UserRepository.GetWithConditionAsync(
             x => x.UserName.ToLower() == name, false, x => x.Role);
         if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
-            throw new InvalidOperationException("Invalid username or password");
+            throw new UnauthorizedAccessException("Invalid username or password.");
         if (!user.EmailConfirmed || user.UserStatus != "Active")
-            throw new InvalidOperationException("Account verification is incomplete. Please verify your email.");
+            throw new AuthenticationException("Account verification is incomplete. Please verify your email.");
 
         return new AuthResponse
         {

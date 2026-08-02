@@ -22,6 +22,7 @@ using DAL.Repository;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using System.Security.Authentication;
 using Microsoft.OpenApi;
 using System.Text;
 
@@ -104,6 +105,18 @@ app.Use(async (context, next) =>
     try
     {
         await next();
+    }
+    catch (UnauthorizedAccessException exception)
+    {
+        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new { message = exception.Message });
+    }
+    catch (AuthenticationException exception)
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new { message = exception.Message });
     }
     catch (InvalidOperationException exception)
     {
