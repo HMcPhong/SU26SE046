@@ -58,6 +58,11 @@ builder.Services.AddSwaggerGen(options =>
             BearerFormat = "JWT",
             Description = "Paste JWT token here"
         });
+
+    options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
+    {
+        [new OpenApiSecuritySchemeReference("Bearer", document)] = []
+    });
 });
 
 builder.Services
