@@ -5,6 +5,20 @@ public record GenerateYearShiftsDto(Guid WarehouseId, int Year, List<DateTime>? 
     List<DayOfWeek>? WorkingDays, TimeSpan? MorningStartTime, TimeSpan? MorningEndTime,
     TimeSpan? AfternoonStartTime, TimeSpan? AfternoonEndTime);
 public record GenerateYearShiftsResultDto(int WorkingDays, int CreatedShifts, int SkippedExisting);
+public record GenerateMonthShiftsDto(
+    Guid WarehouseId,
+    int Year,
+    int Month,
+    List<DateTime>? HolidayDates,
+    List<DayOfWeek>? WorkingDays,
+    TimeSpan? MorningStartTime,
+    TimeSpan? MorningEndTime,
+    TimeSpan? AfternoonStartTime,
+    TimeSpan? AfternoonEndTime);
+public record GenerateMonthShiftsResultDto(
+    int WorkingDays,
+    int CreatedShifts,
+    int SkippedExisting);
 public record DeleteYearShiftsDto(Guid WarehouseId, int Year);
 public record DeleteYearShiftsResultDto(int DeletedShifts, int SkippedOperationalShifts);
 public record UpdateManagerShiftDto(Guid WarehouseId, string ShiftName, DateTime ShiftDate,
