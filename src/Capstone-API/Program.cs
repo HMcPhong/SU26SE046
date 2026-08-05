@@ -133,7 +133,13 @@ app.Use(async (context, next) =>
 
 app.UseSwagger();
 
-app.UseSwaggerUI();
+app.UseSwaggerUI(options =>
+{
+    // Keep the JWT in Swagger UI when the document/page is refreshed.
+    // Without this, Swagger can silently stop attaching Authorization after a UI reload,
+    // making every protected endpoint return 401 until the token is entered again.
+    options.EnablePersistAuthorization();
+});
 
 app.UseHttpsRedirection();
 
