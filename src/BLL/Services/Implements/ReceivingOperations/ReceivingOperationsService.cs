@@ -46,6 +46,289 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         await context.SaveChangesAsync();
     }
 
+    public async Task<GenerateMonthShiftsResultDto> GenerateMonthShiftsAsync(
+    GenerateMonthShiftsDto dto)
+{
+    if (dto.Year is < 2020 or > 2100)
+        throw new InvalidOperationException(
+            "Year must be between 2020 and 2100.");
+
+    if (dto.Month is < 1 or > 12)
+        throw new InvalidOperationException(
+            "Month must be between 1 and 12.");
+
+    if (!await context.Warehouses.AnyAsync(
+            x => x.Id == dto.WarehouseId && x.IsActive != false))
+    {
+        throw new InvalidOperationException("Warehouse not found.");
+    }
+
+    var template = await context.WorkScheduleTemplates
+        .FirstOrDefaultAsync(x =>
+            x.WarehouseId == dto.WarehouseId &&
+            x.Year == dto.Year &&
+            x.IsActive != false);
+
+    /*
+     * If the request does not provide working days,
+     * use the existing yearly template.
+     *
+     * If no template exists, preserve the existing
+     * Monday-Friday default behavior.
+     */
+    HashSet<DayOfWeek> workingDaySet;
+
+    if (dto.WorkingDays is { Count: > 0 })
+    {
+        workingDaySet = dto.WorkingDays
+            .Distinct()
+            .ToHashSet();
+    }
+    else if (template is not null &&
+             !string.IsNullOrWhiteSpace(template.WorkingDays))
+    {
+        workingDaySet = template.WorkingDays
+            .Split(',', StringSplitOptions.RemoveEmptyEntries)
+            .Select(value =>
+            {
+                if (int.TryParse(value, out var number) &&
+                    number is >= 0 and <= 6)
+                {
+                    return (DayOfWeek?)number;
+                }
+
+                return Enum.TryParse<DayOfWeek>(
+                    value,
+                    true,
+                    out var day)
+                    ? day
+                    : null;
+            })
+            .Where(day => day.HasValue)
+            .Select(day => day!.Value)
+            .ToHashSet();
+
+        if (workingDaySet.Count == 0)
+        {
+            workingDaySet =
+            [
+                DayOfWeek.Monday,
+                DayOfWeek.Tuesday,
+                DayOfWeek.Wednesday,
+                DayOfWeek.Thursday,
+                DayOfWeek.Friday
+            ];
+        }
+    }
+    else
+    {
+        workingDaySet =
+        [
+            DayOfWeek.Monday,
+            DayOfWeek.Tuesday,
+            DayOfWeek.Wednesday,
+            DayOfWeek.Thursday,
+            DayOfWeek.Friday
+        ];
+    }
+
+    if (workingDaySet.Any(day => !Enum.IsDefined(day)))
+        throw new InvalidOperationException(
+            "Every working day must be a valid day of week.");
+
+    /*
+     * Use values explicitly provided by the request first.
+     * Otherwise use the existing yearly template.
+     * Finally fall back to the current project defaults.
+     */
+    var morningStart =
+        dto.MorningStartTime
+        ?? template?.MorningStartTime
+        ?? new TimeSpan(8, 0, 0);
+
+    var morningEnd =
+        dto.MorningEndTime
+        ?? template?.MorningEndTime
+        ?? new TimeSpan(11, 0, 0);
+
+    var afternoonStart =
+        dto.AfternoonStartTime
+        ?? template?.AfternoonStartTime
+        ?? new TimeSpan(13, 0, 0);
+
+    var afternoonEnd =
+        dto.AfternoonEndTime
+        ?? template?.AfternoonEndTime
+        ?? new TimeSpan(17, 0, 0);
+
+    if (morningStart >= morningEnd)
+        throw new InvalidOperationException(
+            "Morning end time must be after morning start time.");
+
+    if (afternoonStart >= afternoonEnd)
+        throw new InvalidOperationException(
+            "Afternoon end time must be after afternoon start time.");
+
+    if (morningEnd > afternoonStart)
+        throw new InvalidOperationException(
+            "Morning shift must end before the afternoon shift starts.");
+
+    /*
+     * Fixed-date Vietnamese public holidays.
+     * Lunar holidays and other special holidays are supplied
+     * by the Manager through HolidayDates.
+     *
+     * Only holidays inside the selected month are relevant.
+     */
+    var monthStart = new DateTime(dto.Year, dto.Month, 1);
+    var monthEnd = monthStart.AddMonths(1);
+
+    var excludedDates = new HashSet<DateTime>();
+
+    var fixedHolidays = new[]
+    {
+        new DateTime(dto.Year, 1, 1),
+        new DateTime(dto.Year, 4, 30),
+        new DateTime(dto.Year, 5, 1),
+        new DateTime(dto.Year, 9, 2)
+    };
+
+    foreach (var holiday in fixedHolidays)
+    {
+        if (holiday >= monthStart && holiday < monthEnd)
+            excludedDates.Add(holiday.Date);
+    }
+
+    foreach (var holiday in dto.HolidayDates ?? [])
+    {
+        if (holiday.Year != dto.Year)
+            throw new InvalidOperationException(
+                "Every additional holiday must belong to the selected year.");
+
+        if (holiday.Date >= monthStart && holiday.Date < monthEnd)
+            excludedDates.Add(holiday.Date);
+    }
+
+    /*
+     * Keep the yearly schedule template synchronized with the
+     * configuration actually used to generate this month.
+     */
+    if (template is null)
+    {
+        template = new WorkScheduleTemplate
+        {
+            Id = Guid.NewGuid(),
+            WarehouseId = dto.WarehouseId,
+            Year = dto.Year,
+            CreateAt = DateTime.UtcNow
+        };
+
+        context.WorkScheduleTemplates.Add(template);
+    }
+
+    template.WorkingDays = string.Join(
+        ',',
+        workingDaySet.OrderBy(day =>
+            day == DayOfWeek.Sunday ? 7 : (int)day));
+
+    template.MorningStartTime = morningStart;
+    template.MorningEndTime = morningEnd;
+    template.AfternoonStartTime = afternoonStart;
+    template.AfternoonEndTime = afternoonEnd;
+    template.UpdateAt = DateTime.UtcNow;
+    template.IsActive = true;
+
+    /*
+     * Load all active shifts belonging to this warehouse
+     * and selected month.
+     *
+     * The combination of Date + StartTime is used to determine
+     * whether a shift already exists, following the existing
+     * GenerateYearShiftsAsync behavior.
+     */
+    var existing = await context.Shifts
+        .AsNoTracking()
+        .Where(x =>
+            x.WarehouseId == dto.WarehouseId &&
+            x.ShiftDate >= monthStart &&
+            x.ShiftDate < monthEnd &&
+            x.IsActive != false)
+        .Select(x => new
+        {
+            Date = x.ShiftDate.Date,
+            x.StartTime
+        })
+        .ToListAsync();
+
+    var existingKeys = existing
+        .Select(x => (x.Date, x.StartTime))
+        .ToHashSet();
+
+    /*
+     * These are only generation definitions.
+     * Shift itself still stores ShiftDate, StartTime and EndTime.
+     */
+    var definitions = new[]
+    {
+        ("Ca sáng", morningStart, morningEnd),
+        ("Ca chiều", afternoonStart, afternoonEnd)
+    };
+
+    var workingDays = 0;
+    var created = 0;
+    var skipped = 0;
+
+    for (var date = monthStart; date < monthEnd; date = date.AddDays(1))
+    {
+        if (!workingDaySet.Contains(date.DayOfWeek) ||
+            excludedDates.Contains(date.Date))
+        {
+            continue;
+        }
+
+        workingDays++;
+
+        foreach (var definition in definitions)
+        {
+            if (existingKeys.Contains(
+                    (date.Date, definition.Item2)))
+            {
+                skipped++;
+                continue;
+            }
+
+            context.Shifts.Add(new Shift
+            {
+                Id = Guid.NewGuid(),
+                WarehouseId = dto.WarehouseId,
+                ShiftDate = date.Date,
+                ShiftName = definition.Item1,
+                StartTime = definition.Item2,
+                EndTime = definition.Item3,
+                Status = "Scheduled",
+                CreateAt = DateTime.UtcNow
+            });
+
+            /*
+             * Also update the in-memory set so that if the
+             * generation logic encounters the same key again
+             * during this request, it cannot create a duplicate.
+             */
+            existingKeys.Add(
+                (date.Date, definition.Item2));
+
+            created++;
+        }
+    }
+
+    await context.SaveChangesAsync();
+
+    return new GenerateMonthShiftsResultDto(
+        workingDays,
+        created,
+        skipped);
+}
+
     public async Task<GenerateYearShiftsResultDto> GenerateYearShiftsAsync(GenerateYearShiftsDto dto)
     {
         if (dto.Year is < 2020 or > 2100)
