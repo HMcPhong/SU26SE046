@@ -25,6 +25,8 @@ public class DistributionOperationsController(DistributionOperationsService serv
     public async Task<IActionResult> CreateManagerRequest(CreateManagerRequestDto dto)=>Ok(new{id=await service.CreateManagerRequestAsync(UserId,dto)});
     [HttpPatch("{id:guid}/approval"),Authorize(Roles="Manager")]
     public async Task<IActionResult> Approve(Guid id,ApproveDistributionDto dto){await service.ApproveAsync(UserId,id,dto);return NoContent();}
+    [HttpPatch("{id:guid}/organization-response"),Authorize(Roles="CharityOrganization,RecyclingOrganization,DisposalOrganization")]
+    public async Task<IActionResult> RespondManagerRequest(Guid id,RespondDistributionRequestDto dto){await service.RespondDistributionRequestAsync(UserId,id,dto);return NoContent();}
     [HttpGet("warehouse"),Authorize(Roles="WarehouseStaff")]
     public async Task<IActionResult> Warehouse()=>Ok(await service.WarehouseAsync(UserId));
     [HttpPost("{id:guid}/issue"),Authorize(Roles="WarehouseStaff")]

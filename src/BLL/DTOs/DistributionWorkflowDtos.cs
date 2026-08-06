@@ -14,6 +14,7 @@ public record CreateManagerRequestDto(
     List<CreateDistributionItemDto> Items
 );
 public record ApproveDistributionDto(bool Approved, string? Notes);
+public record RespondDistributionRequestDto(bool Accepted, string? Notes);
 public record IssueDistributionDto(string? Notes);
 public record CreateGhnShipmentDto(int PaymentTypeId, string? RequiredNote, int ToDistrictId,
     string ToWardCode, int ServiceTypeId = 2);

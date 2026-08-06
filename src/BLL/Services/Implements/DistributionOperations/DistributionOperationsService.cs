@@ -173,6 +173,33 @@ public class DistributionOperationsService(AppDbContext context, HttpClient ghnC
         await context.SaveChangesAsync();await tx.CommitAsync();
     }
 
+    public async Task RespondDistributionRequestAsync(Guid organizationId, Guid id, RespondDistributionRequestDto dto)
+    {
+        var request = await context.DistributionRequests
+            .FirstOrDefaultAsync(x=>x.Id == id && x.UserId == organizationId && x.IsActive != false && x.Status == "PendingOrganizationApproval")
+            ?? throw new InvalidOperationException("Pending request not found or does not belong to this organization.");
+        if (!dto.Accepted)
+        {
+            if (string.IsNullOrWhiteSpace(dto.Notes))
+                throw new InvalidOperationException(
+                    "Decline reason is required.");
+            request.Status = "DeclinedByOrganization";
+            request.RejectReason = dto.Notes.Trim();
+        }
+        else
+        {
+            request.Status = "PendingManagerApproval";
+        }
+        request.UpdateAt = DateTime.UtcNow;
+        var managerIds = await context.Users.Where(x => x.IsActive != false && x.Role.RoleName == "Manager").Select(x => x.Id).ToListAsync();
+        foreach (var managerId in managerIds)
+            NotificationWriter.NotifyUser(context, managerId, dto.Accepted ? "OrganizationAcceptedRequest" : "OrganizationDeclinedRequest",
+                dto.Accepted ? "Tổ chức đã chấp nhận yêu cầu" : "Tổ chức đã từ chối yêu cầu",
+                dto.Accepted ? $"{request.RecipientName} đã chấp nhận yêu cầu {request.RequestCode}." : $"{request.RecipientName} đã từ chối yêu cầu {request.RequestCode}: {request.RejectReason}",
+                $"/manager/distributions?requestId={request.Id}", organizationId);
+        await context.SaveChangesAsync();
+    }
+
     public async Task IssueAsync(Guid staffId,Guid id,IssueDistributionDto dto)
     {
         await using var tx=await context.Database.BeginTransactionAsync();
