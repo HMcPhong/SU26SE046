@@ -5,7 +5,9 @@ namespace BLL.Services.Interfaces.ReceivingOperations;
 public interface IReceivingOperationsService
 {
     Task GenerateStandardShiftsAsync(GenerateShiftsDto dto);
+    Task<GenerateMonthShiftsResultDto> GenerateMonthShiftsAsync(GenerateMonthShiftsDto dto);
     Task<GenerateYearShiftsResultDto> GenerateYearShiftsAsync(GenerateYearShiftsDto dto);
+    Task<GenerateShiftsResultDto> GenerateShiftsAsync(GenerateShiftsV2Dto dto);
     Task<DeleteYearShiftsResultDto> DeleteYearShiftsAsync(DeleteYearShiftsDto dto);
     Task UpdateShiftAsync(Guid shiftId, UpdateManagerShiftDto dto);
     Task DeleteShiftAsync(Guid shiftId);

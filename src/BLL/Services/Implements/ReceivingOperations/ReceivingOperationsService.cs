@@ -46,6 +46,203 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         await context.SaveChangesAsync();
     }
 
+    public async Task<GenerateMonthShiftsResultDto> GenerateMonthShiftsAsync(
+    GenerateMonthShiftsDto dto)
+    {
+        if (dto.Year is < 2020 or > 2100)
+            throw new InvalidOperationException("Year must be between 2020 and 2100.");
+        if (dto.Month is < 1 or > 12)
+            throw new InvalidOperationException("Month must be between 1 and 12.");
+        if (!await context.Warehouses.AnyAsync(x => x.Id == dto.WarehouseId && x.IsActive != false))
+            throw new InvalidOperationException("Warehouse not found.");
+        var template = await context.WorkScheduleTemplates
+            .FirstOrDefaultAsync(x =>
+                x.WarehouseId == dto.WarehouseId &&
+                x.Year == dto.Year &&
+                x.IsActive != false);
+        HashSet<DayOfWeek> workingDaySet;
+        if (dto.WorkingDays is { Count: > 0 })
+        {
+            workingDaySet = dto.WorkingDays
+                .Distinct()
+                .ToHashSet();
+        }
+        else if (template is not null && !string.IsNullOrWhiteSpace(template.WorkingDays))
+        {
+            workingDaySet = template.WorkingDays
+                .Split(',', StringSplitOptions.RemoveEmptyEntries)
+                .Select(value =>
+                {
+                    if (int.TryParse(value, out var number) && number is >= 0 and <= 6)
+                    {
+                        return (DayOfWeek?)number;
+                    }
+                    return Enum.TryParse<DayOfWeek>(
+                        value,
+                        true,
+                        out var day)
+                        ? day
+                        : null;
+                })
+                .Where(day => day.HasValue)
+                .Select(day => day!.Value)
+                .ToHashSet();
+            if (workingDaySet.Count == 0)
+            {
+                workingDaySet =
+                [
+                    DayOfWeek.Monday,
+                    DayOfWeek.Tuesday,
+                    DayOfWeek.Wednesday,
+                    DayOfWeek.Thursday,
+                    DayOfWeek.Friday
+                ];
+            }
+        }
+        else
+        {
+            workingDaySet =
+            [
+                DayOfWeek.Monday,
+                DayOfWeek.Tuesday,
+                DayOfWeek.Wednesday,
+                DayOfWeek.Thursday,
+                DayOfWeek.Friday
+            ];
+        }
+        if (workingDaySet.Any(day => !Enum.IsDefined(day)))
+            throw new InvalidOperationException(
+                "Every working day must be a valid day of week.");
+        var morningStart =
+            dto.MorningStartTime
+            ?? template?.MorningStartTime
+            ?? new TimeSpan(8, 0, 0);
+        var morningEnd =
+            dto.MorningEndTime
+            ?? template?.MorningEndTime
+            ?? new TimeSpan(11, 0, 0);
+        var afternoonStart =
+            dto.AfternoonStartTime
+            ?? template?.AfternoonStartTime
+            ?? new TimeSpan(13, 0, 0);
+        var afternoonEnd =
+            dto.AfternoonEndTime
+            ?? template?.AfternoonEndTime
+            ?? new TimeSpan(17, 0, 0);
+        if (morningStart >= morningEnd)
+            throw new InvalidOperationException("Morning end time must be after morning start time.");
+        if (afternoonStart >= afternoonEnd)
+            throw new InvalidOperationException("Afternoon end time must be after afternoon start time.");
+        if (morningEnd > afternoonStart)
+            throw new InvalidOperationException("Morning shift must end before the afternoon shift starts.");
+
+        var monthStart = new DateTime(dto.Year, dto.Month, 1);
+        var monthEnd = monthStart.AddMonths(1);
+        var excludedDates = new HashSet<DateTime>();
+        var fixedHolidays = new[]
+        {
+            new DateTime(dto.Year, 1, 1),
+            new DateTime(dto.Year, 4, 30),
+            new DateTime(dto.Year, 5, 1),
+            new DateTime(dto.Year, 9, 2)
+        };
+        foreach (var holiday in fixedHolidays)
+        {
+            if (holiday >= monthStart && holiday < monthEnd)
+                excludedDates.Add(holiday.Date);
+        }
+        foreach (var holiday in dto.HolidayDates ?? [])
+        {
+            if (holiday.Year != dto.Year)
+                throw new InvalidOperationException(
+                    "Every additional holiday must belong to the selected year.");
+            if (holiday.Date >= monthStart && holiday.Date < monthEnd)
+                excludedDates.Add(holiday.Date);
+        }
+        if (template is null)
+        {
+            template = new WorkScheduleTemplate
+            {
+                Id = Guid.NewGuid(),
+                WarehouseId = dto.WarehouseId,
+                Year = dto.Year,
+                CreateAt = DateTime.UtcNow
+            };
+            context.WorkScheduleTemplates.Add(template);
+        }
+        template.WorkingDays = string.Join(',', workingDaySet.OrderBy(day => day == DayOfWeek.Sunday ? 7 : (int)day));
+        template.MorningStartTime = morningStart;
+        template.MorningEndTime = morningEnd;
+        template.AfternoonStartTime = afternoonStart;
+        template.AfternoonEndTime = afternoonEnd;
+        template.UpdateAt = DateTime.UtcNow;
+        template.IsActive = true;
+
+        var existing = await context.Shifts
+            .AsNoTracking()
+            .Where(x =>
+                x.WarehouseId == dto.WarehouseId &&
+                x.ShiftDate >= monthStart &&
+                x.ShiftDate < monthEnd &&
+                x.IsActive != false)
+            .Select(x => new
+            {
+                Date = x.ShiftDate.Date,
+                x.StartTime
+            })
+            .ToListAsync();
+
+        var existingKeys = existing
+            .Select(x => (x.Date, x.StartTime))
+            .ToHashSet();
+        var definitions = new[]
+        {
+            ("Ca sáng", morningStart, morningEnd),
+            ("Ca chiều", afternoonStart, afternoonEnd)
+        };
+        var workingDays = 0;
+        var created = 0;
+        var skipped = 0;
+        for (var date = monthStart; date < monthEnd; date = date.AddDays(1))
+        {
+            if (!workingDaySet.Contains(date.DayOfWeek) ||
+                excludedDates.Contains(date.Date))
+            {
+                continue;
+            }
+            workingDays++;
+            foreach (var definition in definitions)
+            {
+                if (existingKeys.Contains(
+                        (date.Date, definition.Item2)))
+                {
+                    skipped++;
+                    continue;
+                }
+                context.Shifts.Add(new Shift
+                {
+                    Id = Guid.NewGuid(),
+                    WarehouseId = dto.WarehouseId,
+                    ShiftDate = date.Date,
+                    ShiftName = definition.Item1,
+                    StartTime = definition.Item2,
+                    EndTime = definition.Item3,
+                    Status = "Scheduled",
+                    CreateAt = DateTime.UtcNow
+                });
+                existingKeys.Add((date.Date, definition.Item2));
+                created++;
+            }
+    }
+
+    await context.SaveChangesAsync();
+
+    return new GenerateMonthShiftsResultDto(
+        workingDays,
+        created,
+        skipped);
+}
+
     public async Task<GenerateYearShiftsResultDto> GenerateYearShiftsAsync(GenerateYearShiftsDto dto)
     {
         if (dto.Year is < 2020 or > 2100)
@@ -149,6 +346,117 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
         }
         await context.SaveChangesAsync();
         return new GenerateYearShiftsResultDto(workingDays, created, skipped);
+    }
+
+    public async Task<GenerateShiftsResultDto> GenerateShiftsAsync(GenerateShiftsV2Dto dto)
+    {
+        if (!await context.Warehouses
+            .AnyAsync(x => x.Id == dto.WarehouseId && x.IsActive != false))
+        {
+            throw new InvalidOperationException("Warehouse not found.");
+        }
+        if (dto.StartDate == default)
+            throw new InvalidOperationException("Start date is required.");
+        if (dto.PeriodUnit != ShiftGenerationPeriodUnit.Custom &&
+            dto.PeriodValue <= 0)
+        {
+            throw new InvalidOperationException(
+                "Period value must be greater than zero.");
+        }
+        var startDate = dto.StartDate.Date;
+        var endDate = ResolveEndDate(dto, startDate);
+        if (endDate <= startDate)
+        {
+            throw new InvalidOperationException(
+                "The generation end date must be after the start date.");
+        }
+        var workingDaySet = (dto.WorkingDays is { Count: > 0 }
+                ? dto.WorkingDays
+                : new List<DayOfWeek>
+                {
+                    DayOfWeek.Monday,
+                    DayOfWeek.Tuesday,
+                    DayOfWeek.Wednesday,
+                    DayOfWeek.Thursday,
+                    DayOfWeek.Friday
+                })
+            .Distinct()
+            .ToHashSet();
+        if (workingDaySet.Any(day => !Enum.IsDefined(day)))
+        {
+            throw new InvalidOperationException(
+                "Every working day must be a valid day of week.");
+        }
+        var excludedDates = BuildExcludedDates(
+            startDate.Year,
+            dto.ExcludedDates);
+        var definitions = await ResolveShiftDefinitionsAsync(dto);
+        ValidateShiftDefinitions(definitions);
+        var existing = await context.Shifts
+            .AsNoTracking()
+            .Where(x =>
+                x.WarehouseId == dto.WarehouseId &&
+                x.ShiftDate >= startDate &&
+                x.ShiftDate < endDate &&
+                x.IsActive != false)
+            .Select(x => new
+            {
+                x.ShiftDate,
+                x.StartTime,
+                x.EndTime
+            })
+            .ToListAsync();
+        var existingKeys = existing
+            .Select(x => (
+                Date: x.ShiftDate.Date,
+                x.StartTime,
+                x.EndTime))
+            .ToHashSet();
+        var workingDays = 0;
+        var created = 0;
+        var skipped = 0;
+        for (var date = startDate;
+            date < endDate;
+            date = date.AddDays(1))
+        {
+            if (!workingDaySet.Contains(date.DayOfWeek))
+                continue;
+            if (excludedDates.Contains(date.Date))
+                continue;
+            workingDays++;
+            foreach (var definition in definitions)
+            {
+                var key = (
+                    Date: date.Date,
+                    definition.StartTime,
+                    definition.EndTime);
+                if (existingKeys.Contains(key))
+                {
+                    skipped++;
+                    continue;
+                }
+                context.Shifts.Add(new Shift
+                {
+                    Id = Guid.NewGuid(),
+                    WarehouseId = dto.WarehouseId,
+                    ShiftDate = date.Date,
+                    ShiftName = definition.Name,
+                    StartTime = definition.StartTime,
+                    EndTime = definition.EndTime,
+                    Status = "Scheduled",
+                    CreateAt = DateTime.UtcNow
+                });
+                existingKeys.Add(key);
+                created++;
+            }
+        }
+        await context.SaveChangesAsync();
+        return new GenerateShiftsResultDto(
+            startDate,
+            endDate.AddDays(-1),
+            workingDays,
+            created,
+            skipped);
     }
 
     public async Task UpdateShiftAsync(Guid shiftId, UpdateManagerShiftDto dto)
@@ -1057,5 +1365,116 @@ public class ReceivingOperationsService(AppDbContext context) : IReceivingOperat
     {
         var match = Regex.Match(address, @"(?i)(quận|q\.?|huyện|thành phố|tp\.?|thủ đức)\s*[^,]+", RegexOptions.CultureInvariant);
         return match.Success ? match.Value.Trim() : address.Split(',', StringSplitOptions.RemoveEmptyEntries).LastOrDefault()?.Trim() ?? "Khu vực khác";
+    }
+
+    private static DateTime ResolveEndDate(GenerateShiftsV2Dto dto, DateTime startDate)
+    {
+        if (dto.PeriodUnit == ShiftGenerationPeriodUnit.Custom)
+        {
+            if (dto.CustomEndDate is null)
+            {
+                throw new InvalidOperationException("Custom end date is required when using a custom period.");
+            }
+            var customEndDate = dto.CustomEndDate.Value.Date;
+            return customEndDate.AddDays(1);
+        }
+        return dto.PeriodUnit switch
+        {
+            ShiftGenerationPeriodUnit.Day => startDate.AddDays(dto.PeriodValue),
+            ShiftGenerationPeriodUnit.Week => startDate.AddDays(dto.PeriodValue * 7),
+            ShiftGenerationPeriodUnit.Month => startDate.AddMonths(dto.PeriodValue),
+            ShiftGenerationPeriodUnit.Quarter => startDate.AddMonths(dto.PeriodValue * 3),
+            ShiftGenerationPeriodUnit.Year => startDate.AddYears(dto.PeriodValue),
+            _ => throw new InvalidOperationException("Unsupported shift generation period.")
+        };
+    }
+
+    private static HashSet<DateTime> BuildExcludedDates(int year, List<DateTime>? additionalDates)
+    {
+        var excludedDates = new HashSet<DateTime>
+        {
+            new DateTime(year, 1, 1), new DateTime(year, 4, 30), new DateTime(year, 5, 1), new DateTime(year, 9, 2)
+        };
+        foreach (var date in additionalDates ?? [])
+        {
+            excludedDates.Add(date.Date);
+        }
+        return excludedDates;
+    }
+
+    private async Task<List<ShiftDefinitionDto>> ResolveShiftDefinitionsAsync(GenerateShiftsV2Dto dto)
+    {
+        if (dto.ShiftDefinitions is { Count: > 0 })
+        {
+            return dto.ShiftDefinitions;
+        }
+        var template = await context.WorkScheduleTemplates
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x =>
+                x.WarehouseId == dto.WarehouseId &&
+                x.Year == dto.StartDate.Year &&
+                x.IsActive != false);
+        if (template is not null)
+        {
+            return
+            [
+                new ShiftDefinitionDto(
+                    "Ca sáng",
+                    template.MorningStartTime,
+                    template.MorningEndTime),
+                new ShiftDefinitionDto(
+                    "Ca chiều",
+                    template.AfternoonStartTime,
+                    template.AfternoonEndTime)
+            ];
+        }
+        // Default values for the creation form / backward-compatible behavior.
+        return
+        [
+            new ShiftDefinitionDto(
+                "Ca sáng",
+                new TimeSpan(8, 0, 0),
+                new TimeSpan(11, 0, 0)),
+            new ShiftDefinitionDto(
+                "Ca chiều",
+                new TimeSpan(13, 0, 0),
+                new TimeSpan(17, 0, 0))
+        ];
+    }
+
+    private static void ValidateShiftDefinitions(IEnumerable<ShiftDefinitionDto> definitions)
+    {
+        var definitionList = definitions.ToList();
+        if (definitionList.Count == 0)
+        {
+            throw new InvalidOperationException("At least one shift definition is required.");
+        }
+        foreach (var definition in definitionList)
+        {
+            if (string.IsNullOrWhiteSpace(definition.Name))
+            {
+                throw new InvalidOperationException("Shift name is required.");
+            }
+            if (definition.StartTime >= definition.EndTime)
+            {
+                throw new InvalidOperationException($"Shift '{definition.Name}' must end after it starts.");
+            }
+        }
+
+        for (var i = 0; i < definitionList.Count; i++)
+        {
+            for (var j = i + 1; j < definitionList.Count; j++)
+            {
+                var first = definitionList[i]; var second = definitionList[j];
+                var overlaps =
+                    first.StartTime < second.EndTime &&
+                    first.EndTime > second.StartTime;
+                if (overlaps)
+                {
+                    throw new InvalidOperationException(
+                        $"Shift definitions '{first.Name}' and '{second.Name}' overlap.");
+                }
+            }
+        }
     }
 }

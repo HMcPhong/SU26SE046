@@ -21,10 +21,21 @@ public class ReceivingOperationsController(IReceivingOperationsService service) 
     public async Task<IActionResult> GenerateYearShifts(GenerateYearShiftsDto dto)
         => Ok(await service.GenerateYearShiftsAsync(dto));
 
+    [HttpPost("month-shifts")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> GenerateMonthShifts(GenerateMonthShiftsDto dto)
+        => Ok(await service.GenerateMonthShiftsAsync(dto));
+
     [HttpDelete("year-shifts")]
     [Authorize(Roles = "Manager")]
     public async Task<IActionResult> DeleteYearShifts([FromQuery] Guid warehouseId, [FromQuery] int year)
         => Ok(await service.DeleteYearShiftsAsync(new DeleteYearShiftsDto(warehouseId, year)));
+    
+    [HttpPost("shifts/generate")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> GenerateShifts(
+        GenerateShiftsV2Dto dto)
+        => Ok(await service.GenerateShiftsAsync(dto));
 
     [HttpPut("manager-shifts/{shiftId:guid}")]
     [Authorize(Roles = "Manager")]

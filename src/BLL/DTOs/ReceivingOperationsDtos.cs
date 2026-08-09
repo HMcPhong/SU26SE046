@@ -5,6 +5,20 @@ public record GenerateYearShiftsDto(Guid WarehouseId, int Year, List<DateTime>? 
     List<DayOfWeek>? WorkingDays, TimeSpan? MorningStartTime, TimeSpan? MorningEndTime,
     TimeSpan? AfternoonStartTime, TimeSpan? AfternoonEndTime);
 public record GenerateYearShiftsResultDto(int WorkingDays, int CreatedShifts, int SkippedExisting);
+public record GenerateMonthShiftsDto(
+    Guid WarehouseId,
+    int Year,
+    int Month,
+    List<DateTime>? HolidayDates,
+    List<DayOfWeek>? WorkingDays,
+    TimeSpan? MorningStartTime,
+    TimeSpan? MorningEndTime,
+    TimeSpan? AfternoonStartTime,
+    TimeSpan? AfternoonEndTime);
+public record GenerateMonthShiftsResultDto(
+    int WorkingDays,
+    int CreatedShifts,
+    int SkippedExisting);
 public record DeleteYearShiftsDto(Guid WarehouseId, int Year);
 public record DeleteYearShiftsResultDto(int DeletedShifts, int SkippedOperationalShifts);
 public record UpdateManagerShiftDto(Guid WarehouseId, string ShiftName, DateTime ShiftDate,
@@ -87,3 +101,14 @@ public record ManagerShiftOverviewDto(Guid Id, Guid WarehouseId, string Warehous
     List<ManagerTeamOverviewDto> Teams, int AssignedRequests, int PendingDropOffRequests);
 public record ManagerReceivingSetupDto(List<ManagerWarehouseOptionDto> Warehouses,
     List<ManagerStaffOptionDto> ReceivingStaff, List<ManagerShiftOverviewDto> Shifts);
+public enum ShiftGenerationPeriodUnit
+{
+    Day, Week, Month, Quarter, Year, Custom
+}
+
+public record ShiftDefinitionDto(string Name, TimeSpan StartTime, TimeSpan EndTime);
+
+public record GenerateShiftsV2Dto(Guid WarehouseId, DateTime StartDate, ShiftGenerationPeriodUnit PeriodUnit, int PeriodValue,
+    DateTime? CustomEndDate, List<DayOfWeek>? WorkingDays, List<DateTime>? ExcludedDates, List<ShiftDefinitionDto>? ShiftDefinitions);
+
+public record GenerateShiftsResultDto(DateTime StartDate, DateTime EndDate, int WorkingDays, int CreatedShifts, int SkippedExisting);
