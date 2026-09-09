@@ -16,6 +16,21 @@ public class ProcessingOperationsController(
     [Authorize(Roles = "Manager")]
     public async Task<IActionResult> Create(CreateProcessingOperationDto dto) =>Ok(await service.CreateAsync(CurrentUserId, dto));
 
+    [HttpGet]
+    [Authorize(Roles = "Manager,RecyclingOrganization,DisposalOrganization")]
+    public async Task<IActionResult> GetList(
+        [FromQuery] string? status)
+    {
+        return Ok(await service.GetListAsync(CurrentUserId, status));
+    }
+
+    [HttpGet("{id:guid}")]
+    [Authorize(Roles = "Manager,RecyclingOrganization,DisposalOrganization,WarehouseStaff")]
+    public async Task<IActionResult> GetById(Guid id)
+    {
+        return Ok(await service.GetByIdAsync(CurrentUserId, id));
+    }
+
     [HttpPost("{id:guid}/organization/approve")]
     [Authorize(Roles = "RecyclingOrganization,DisposalOrganization")]
     public async Task<IActionResult> ApproveByOrganization(Guid id)
@@ -45,6 +60,14 @@ public class ProcessingOperationsController(
     public async Task<IActionResult> RejectByManager(Guid id,ProcessingOperationDecisionDto dto)
     {
         await service.RejectByManagerAsync(CurrentUserId,id,dto);
+        return Ok();
+    }
+
+    [HttpPost("{id:guid}/issue")]
+    [Authorize(Roles = "WarehouseStaff")]
+    public async Task<IActionResult> Issue(Guid id,IssueProcessingOperationDto dto)
+    {
+        await service.IssueAsync(CurrentUserId,id,dto);
         return Ok();
     }
 
