@@ -35,13 +35,23 @@ public record ConfirmPickupDto(decimal ActualWeight, string? Notes, List<string>
 public record ReschedulePickupDto(DateTime PickupDate, string? Reason);
 public record RejectPickupDto(string Reason);
 public record WarehouseDutyContextDto(Guid TeamId, string TeamName, Guid ShiftId, string ShiftName,
-    DateTime ShiftDate, TimeSpan StartTime, TimeSpan EndTime, string ShiftStatus,
-    Guid WarehouseId, string WarehouseName, string WarehouseAddress, Guid? IntakeBatchId);
+    DateTime ShiftDate, TimeSpan StartTime, TimeSpan EndTime, string ShiftStatus, string TeamStatus,
+    Guid WarehouseId, string WarehouseName, string WarehouseAddress, Guid? IntakeBatchId,
+    List<ReceivingTeamMemberDto> Members);
 public record WarehouseDropOffItemDto(Guid Id, Guid WarehouseId, string Code, string ContactName, string PhoneNumber,
     string Address, DateTime ExpectedDate, string Description, decimal EstimateWeight,
-    string Status, List<string>? ImageUrls);
+    string Status, List<string>? ImageUrls, string? DropOffMethod, string? CarrierName, string? TrackingCode);
 public record WarehouseDropOffBoardDto(List<WarehouseDutyContextDto> DutyContexts,
     List<WarehouseDropOffItemDto> Requests);
+public record ReceivingStagingLocationDto(Guid Id, string LocationCode, string AisleCode,
+    string RackCode, string ShelfCode, string BinCode, decimal CapacityKg,
+    decimal CurrentKg, decimal AvailableKg, string Status, int BatchCount);
+public record ReceivingStagingGroupDto(Guid Id, string GroupName, string AreaName,
+    decimal CapacityKg, decimal CurrentKg, decimal AvailableKg,
+    List<ReceivingStagingLocationDto> Locations);
+public record ReceivingLocationBatchDto(Guid Id, string Code, string Route,
+    decimal TotalWeight, string Status, bool CanManage);
+public record ReceiveIntakeBatchAtWarehouseDto(Guid AreaGroupId, Guid StorageLocationId);
 
 public class ReceivingBatchDto
 {
@@ -52,11 +62,20 @@ public class ReceivingBatchDto
     public string ShiftName { get; set; } = string.Empty;
     public Guid ShiftId { get; set; }
     public string ShiftStatus { get; set; } = string.Empty;
+    public string TeamStatus { get; set; } = string.Empty;
     public TimeSpan StartTime { get; set; }
     public TimeSpan EndTime { get; set; }
     public string Status { get; set; } = string.Empty;
     public string TeamName { get; set; } = string.Empty;
+    public string WarehouseName { get; set; } = string.Empty;
     public string WarehouseAddress { get; set; } = string.Empty;
+    public decimal TotalWeight { get; set; }
+    public DateTime? WarehouseReceivedAt { get; set; }
+    public string? WarehouseReceivedBy { get; set; }
+    public string? CurrentAreaName { get; set; }
+    public string? CurrentGroupName { get; set; }
+    public string? CurrentLocationCode { get; set; }
+    public List<ReceivingStagingGroupDto> ReceivingGroups { get; set; } = [];
     public List<ReceivingTeamMemberDto> TeamMembers { get; set; } = [];
     public List<ReceivingRequestDto> Requests { get; set; } = [];
 }
@@ -84,7 +103,8 @@ public record DispatchRequestDto(Guid Id, string Code, string ContactName, strin
     string DeliveryMethod, string Address, DateTime? ScheduledDate, Guid WarehouseId, string WarehouseName,
     DateTime? CreatedAt);
 public record DispatchTeamDto(Guid Id, string TeamName, string TeamType, Guid ShiftId, string ShiftName,
-    DateTime ShiftDate, string ShiftTime, Guid WarehouseId, List<ReceivingTeamMemberDto> Members);
+    DateTime ShiftDate, string ShiftTime, TimeSpan StartTime, TimeSpan EndTime,
+    Guid WarehouseId, List<ReceivingTeamMemberDto> Members);
 public record ReceivingDispatchBoardDto(List<DispatchRequestDto> Requests, List<DispatchTeamDto> Teams);
 public record ManagerWarehouseOptionDto(Guid Id, string Name, string Address);
 public record ManagerStaffOptionDto(Guid Id, string FullName, string UserName, string PhoneNumber,
@@ -92,6 +112,8 @@ public record ManagerStaffOptionDto(Guid Id, string FullName, string UserName, s
 public record ManagerAssignedRequestDto(Guid Id, string Code, string ContactName, string PhoneNumber,
     string Address, DateTime? PickupDate, string DeliveryMethod, string Status, int RouteOrder);
 public record ManagerTeamOverviewDto(Guid Id, string TeamName, string TeamType,
+    string Status, DateTime? StartedAt, Guid? StartedByStaffId,
+    DateTime? CompletedAt, Guid? CompletedByStaffId,
     List<ReceivingTeamMemberDto> Members,
     Guid? IntakeBatchId, string? IntakeBatchCode, string? IntakeBatchStatus,
     string? IntakeBatchRoute, decimal IntakeBatchWeight,

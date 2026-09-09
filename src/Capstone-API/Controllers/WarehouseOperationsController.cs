@@ -32,6 +32,21 @@ public class WarehouseOperationsController(IWarehouseOperationsService service) 
     public async Task<IActionResult> CreateWarehouse(CreateWarehouseDto dto) =>
         Ok(new { id = await service.CreateWarehouseAsync(CurrentUserId, dto) });
 
+    [HttpGet("warehouses/{warehouseId:guid}")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> Warehouse(Guid warehouseId) =>
+        Ok(await service.GetWarehouseAsync(CurrentUserId, warehouseId));
+
+    [HttpPut("warehouses/{warehouseId:guid}")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> UpdateWarehouse(Guid warehouseId, CreateWarehouseDto dto)
+    { await service.UpdateWarehouseAsync(CurrentUserId, warehouseId, dto); return NoContent(); }
+
+    [HttpDelete("warehouses/{warehouseId:guid}")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> DeleteWarehouse(Guid warehouseId)
+    { await service.DeleteWarehouseAsync(CurrentUserId, warehouseId); return NoContent(); }
+
     [HttpPost("areas")]
     [Authorize(Roles = "Manager")]
     public async Task<IActionResult> CreateArea(SaveWarehouseAreaDto dto) =>
@@ -108,10 +123,12 @@ public class WarehouseOperationsController(IWarehouseOperationsService service) 
         Ok(await service.GetTransactionsAsync(CurrentUserId, warehouseId, type));
 
     [HttpPost("inventory/{inventoryId:guid}/issue")]
+    [Authorize(Roles = "WarehouseStaff")]
     public async Task<IActionResult> Issue(Guid inventoryId, IssueInventoryDto dto)
     { await service.IssueAsync(CurrentUserId, inventoryId, dto); return NoContent(); }
 
     [HttpPost("inventory/{inventoryId:guid}/move")]
+    [Authorize(Roles = "WarehouseStaff")]
     public async Task<IActionResult> Move(Guid inventoryId, MoveInventoryDto dto)
     { await service.MoveAsync(CurrentUserId, inventoryId, dto); return NoContent(); }
 

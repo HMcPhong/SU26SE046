@@ -19,6 +19,8 @@ using BLL.Services.Interfaces.ManagerAccounts;
 using BLL.Services.Implements.DistributionOperations;
 using BLL.Services.Interfaces.Voucher;
 using BLL.Services.Implements.Voucher;
+using BLL.Services.Implements.ProcessingOperations;
+using BLL.Services.Interfaces.ProcessingOperations;
 using DAL;
 using DAL.Repository;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -27,28 +29,54 @@ using Microsoft.IdentityModel.Tokens;
 using System.Security.Authentication;
 using Microsoft.OpenApi;
 using System.Text;
+using Capstone_API.Hubs;
+using Capstone_API.Services;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Avoid the Windows Event Log provider in local/background runs. It can require
+// elevated permissions and must never be allowed to terminate an API request.
+builder.Logging.ClearProviders();
+builder.Logging.AddConsole();
+builder.Logging.AddDebug();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlServer(
         builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddHostedService<ShiftLifecycleWorker>();
 
 builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 builder.Services.AddScoped(typeof(ICrudService<>), typeof(CrudService<>));
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmailVerificationSender, EmailVerificationSender>();
-builder.Services.AddScoped<IDonorRequestService, DonorRequestService>();
+builder.Services.AddHttpClient<DonorRequestService>(client =>
+{
+    client.BaseAddress = new Uri("https://api.geoapify.com/");
+});
+builder.Services.AddScoped<IDonorRequestService>(provider =>
+    provider.GetRequiredService<DonorRequestService>());
 builder.Services.AddScoped<IWarehouseService, WarehouseService>();
 builder.Services.AddScoped<IReceivingOperationsService, ReceivingOperationsService>();
 builder.Services.AddScoped<IClassificationOperationsService, ClassificationOperationsService>();
+builder.Services.AddScoped<IProcessingOperationsService, ProcessingOperationsService>();
+builder.Services.AddHttpClient<GeminiClassificationService>(client =>
+{
+    client.BaseAddress = new Uri("https://generativelanguage.googleapis.com/");
+    client.Timeout = TimeSpan.FromSeconds(90);
+});
 builder.Services.AddScoped<IWarehouseOperationsService, WarehouseOperationsService>();
 builder.Services.AddScoped<IManagerDashboardService, ManagerDashboardService>();
 builder.Services.AddScoped<IManagerAccountService, ManagerAccountService>();
 builder.Services.AddScoped<IVoucherService, VoucherService>();
 builder.Services.AddHttpClient<DistributionOperationsService>(client =>
-    client.BaseAddress = new Uri("https://dev-online-gateway.ghn.vn/shiip/public-api/"));
+{
+    var endpoint = (builder.Configuration["Ghn:Endpoint"] ?? builder.Configuration["GHN:Endpoint"]
+        ?? "https://dev-online-gateway.ghn.vn/shiip/public-api/").TrimEnd('/');
+    if (endpoint.EndsWith("/v2", StringComparison.OrdinalIgnoreCase)) endpoint = endpoint[..^3];
+    client.BaseAddress = new Uri($"{endpoint}/");
+});
 builder.Services.AddControllers();
+builder.Services.AddSignalR();
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen(options =>
@@ -91,19 +119,62 @@ builder.Services
                     Encoding.UTF8.GetBytes(
                         builder.Configuration["Jwt:Key"]!))
         };
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var token = context.Request.Query["access_token"];
+            if (!string.IsNullOrEmpty(token) && context.HttpContext.Request.Path.StartsWithSegments("/hubs"))
+                context.Token = token;
+            return Task.CompletedTask;
+        }
+    };
 });
+
+var configuredCorsOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? [];
+var environmentCorsOrigins = (builder.Configuration["CORS_ALLOWED_ORIGINS"] ?? string.Empty)
+    .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+var allowedCorsOrigins = configuredCorsOrigins
+    .Concat(environmentCorsOrigins)
+    .Select(origin => origin.Trim().TrimEnd('/'))
+    .Where(origin => !string.IsNullOrWhiteSpace(origin))
+    .Distinct(StringComparer.OrdinalIgnoreCase)
+    .ToArray();
+
+static bool IsCorsOriginAllowed(string origin, IReadOnlyCollection<string> allowedOrigins)
+{
+    if (!Uri.TryCreate(origin, UriKind.Absolute, out var requestOrigin)) return false;
+
+    foreach (var allowedOrigin in allowedOrigins)
+    {
+        if (!allowedOrigin.Contains('*'))
+        {
+            if (string.Equals(origin.TrimEnd('/'), allowedOrigin, StringComparison.OrdinalIgnoreCase))
+                return true;
+            continue;
+        }
+
+        if (!Uri.TryCreate(allowedOrigin.Replace("*.", "wildcard."), UriKind.Absolute,
+                out var wildcardOrigin)) continue;
+        var hostSuffix = wildcardOrigin.Host["wildcard".Length..];
+        if (requestOrigin.Scheme.Equals(wildcardOrigin.Scheme, StringComparison.OrdinalIgnoreCase)
+            && requestOrigin.Host.EndsWith(hostSuffix, StringComparison.OrdinalIgnoreCase)
+            && requestOrigin.Host.Length > hostSuffix.Length)
+            return true;
+    }
+
+    return false;
+}
 
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("React",
-        policy =>
-        {
-            policy
-                .WithOrigins("http://localhost:5173")
-                .AllowAnyHeader()
-                .AllowAnyMethod()
-                .AllowCredentials();
-        });
+    options.AddPolicy("React", policy => policy
+        .SetIsOriginAllowed(origin => IsCorsOriginAllowed(origin, allowedCorsOrigins))
+        .AllowAnyHeader()
+        .AllowAnyMethod()
+        .AllowCredentials());
 });
 
 var app = builder.Build();
@@ -153,5 +224,6 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<DonationChatHub>("/hubs/donation-chat");
 
 app.Run();

@@ -80,6 +80,22 @@ public class ReceivingOperationsController(IReceivingOperationsService service) 
     [Authorize(Roles = "Manager")]
     public async Task<IActionResult> ManagerSetup() => Ok(await service.GetManagerSetupAsync());
 
+    [HttpGet("manager/warehouses")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> ManagerWarehouses()
+        => Ok(await service.GetManagerWarehousesAsync());
+
+    [HttpGet("manager/receiving-staff")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> ManagerReceivingStaff([FromQuery] Guid? warehouseId)
+        => Ok(await service.GetManagerReceivingStaffAsync(warehouseId));
+
+    [HttpGet("manager/shifts")]
+    [Authorize(Roles = "Manager")]
+    public async Task<IActionResult> ManagerShifts(
+        [FromQuery] Guid? warehouseId, [FromQuery] DateTime? fromDate, [FromQuery] DateTime? toDate)
+        => Ok(await service.GetManagerShiftsAsync(warehouseId, fromDate, toDate));
+
     [HttpPost("assign-request")]
     [Authorize(Roles = "Manager")]
     public async Task<IActionResult> AssignRequest(AssignDonationRequestDto dto)
@@ -88,6 +104,11 @@ public class ReceivingOperationsController(IReceivingOperationsService service) 
     [HttpGet("my-batches")]
     [Authorize(Roles = "ReceivingStaff")]
     public async Task<IActionResult> MyBatches() => Ok(await service.GetMyBatchesAsync(CurrentUserId));
+
+    [HttpGet("receiving-locations/{locationId:guid}/batches")]
+    [Authorize(Roles = "ReceivingStaff")]
+    public async Task<IActionResult> LocationBatches(Guid locationId)
+        => Ok(await service.GetLocationBatchesAsync(CurrentUserId, locationId));
 
     [HttpGet("my-batches/{batchId:guid}")]
     [Authorize(Roles = "ReceivingStaff")]
@@ -98,6 +119,11 @@ public class ReceivingOperationsController(IReceivingOperationsService service) 
     [Authorize(Roles = "ReceivingStaff")]
     public async Task<IActionResult> Start(Guid batchId)
     { await service.StartBatchAsync(CurrentUserId, batchId); return NoContent(); }
+
+    [HttpPost("my-teams/{teamId:guid}/start")]
+    [Authorize(Roles = "ReceivingStaff")]
+    public async Task<IActionResult> StartTeam(Guid teamId)
+    { await service.StartTeamAsync(CurrentUserId, teamId); return NoContent(); }
 
     [HttpPost("my-shifts/{shiftId:guid}/complete")]
     [Authorize(Roles = "ReceivingStaff")]
@@ -141,6 +167,11 @@ public class ReceivingOperationsController(IReceivingOperationsService service) 
     [Authorize(Roles = "ReceivingStaff")]
     public async Task<IActionResult> SendToClassification(Guid batchId)
     { await service.SendToClassificationAsync(CurrentUserId, batchId); return NoContent(); }
+
+    [HttpPost("my-batches/{batchId:guid}/receive-at-warehouse")]
+    [Authorize(Roles = "ReceivingStaff")]
+    public async Task<IActionResult> ReceiveAtWarehouse(Guid batchId, ReceiveIntakeBatchAtWarehouseDto dto)
+    { await service.ReceiveBatchAtWarehouseAsync(CurrentUserId, batchId, dto); return NoContent(); }
 
     private Guid CurrentUserId => Guid.Parse(User.FindFirstValue(ClaimTypes.NameIdentifier)!);
 }

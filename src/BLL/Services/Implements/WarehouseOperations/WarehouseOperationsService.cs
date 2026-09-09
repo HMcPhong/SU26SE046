@@ -1,4 +1,5 @@
 using BLL.DTOs;
+using BLL.Common;
 using BLL.Services.Interfaces.WarehouseOperations;
 using BLL.Services.Implements.Notifications;
 using DAL;
@@ -9,6 +10,22 @@ namespace BLL.Services.Implements.WarehouseOperations;
 
 public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperationsService
 {
+    public async Task<WarehouseDetailsDto> GetWarehouseAsync(Guid userId, Guid warehouseId)
+    {
+        await RequireManagerAsync(userId);
+        var warehouse = await context.Warehouses.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == warehouseId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Warehouse not found.");
+        var allocatedAreaCapacity = await context.WarehouseAreas.AsNoTracking()
+            .Where(x => x.WarehouseId == warehouseId && x.IsActive != false)
+            .SumAsync(x => (decimal?)x.CapacityKg) ?? 0;
+        var actualWeight = await GetWarehouseActualWeightAsync(warehouseId);
+        return new WarehouseDetailsDto(warehouse.Id, warehouse.WarehouseName, warehouse.Address,
+            warehouse.PhoneNumber, warehouse.Email, warehouse.Description, warehouse.TotalCapacityKg,
+            actualWeight, allocatedAreaCapacity, warehouse.Latitude, warehouse.Longitude,
+            warehouse.ServiceRadiusKm);
+    }
+
     public async Task<Guid> CreateWarehouseAsync(Guid userId, CreateWarehouseDto dto)
     {
         await RequireManagerAsync(userId);
@@ -25,6 +42,9 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         if (!string.IsNullOrWhiteSpace(dto.Email)
             && !System.Net.Mail.MailAddress.TryCreate(dto.Email.Trim(), out _))
             throw new InvalidOperationException("Warehouse email format is invalid.");
+        if (dto.ServiceRadiusKm is < 1 or > 200)
+            throw new InvalidOperationException("Warehouse service radius must be between 1 and 200 km.");
+        ValidateCoordinates(dto);
 
         var normalizedName = name.ToLower();
         var normalizedAddress = address.ToLower();
@@ -41,12 +61,94 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim(),
             Email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant(),
             Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim(),
+            Latitude = dto.Latitude, Longitude = dto.Longitude,
+            ServiceRadiusKm = dto.ServiceRadiusKm,
             TotalCapacityKg = dto.TotalCapacityKg, CurrentWeight = 0,
             CreateAt = DateTime.UtcNow, CreatedBy = userId, IsActive = true
         };
         context.Warehouses.Add(warehouse);
         await context.SaveChangesAsync();
+        await EnsureDefaultLayoutAsync(warehouse.Id);
         return warehouse.Id;
+    }
+
+    public async Task UpdateWarehouseAsync(Guid userId, Guid warehouseId, CreateWarehouseDto dto)
+    {
+        await RequireManagerAsync(userId);
+        ValidateWarehouse(dto);
+        var warehouse = await context.Warehouses
+            .FirstOrDefaultAsync(x => x.Id == warehouseId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Warehouse not found.");
+        var name = dto.WarehouseName.Trim();
+        var address = dto.Address.Trim();
+        var normalizedName = name.ToLower();
+        var normalizedAddress = address.ToLower();
+        if (await context.Warehouses.AnyAsync(x => x.Id != warehouseId && x.IsActive != false
+                && x.WarehouseName.ToLower() == normalizedName))
+            throw new InvalidOperationException("An active warehouse with this name already exists.");
+        if (await context.Warehouses.AnyAsync(x => x.Id != warehouseId && x.IsActive != false
+                && x.Address.ToLower() == normalizedAddress))
+            throw new InvalidOperationException("An active warehouse with this address already exists.");
+
+        var allocatedAreaCapacity = await context.WarehouseAreas
+            .Where(x => x.WarehouseId == warehouseId && x.IsActive != false)
+            .SumAsync(x => (decimal?)x.CapacityKg) ?? 0;
+        var actualWeight = await GetWarehouseActualWeightAsync(warehouseId);
+        var minimumCapacity = Math.Max(allocatedAreaCapacity, actualWeight);
+        if (dto.TotalCapacityKg < minimumCapacity)
+            throw new InvalidOperationException(
+                $"Warehouse capacity cannot be lower than {minimumCapacity} kg currently allocated or stored.");
+
+        warehouse.WarehouseName = name;
+        warehouse.Address = address;
+        warehouse.PhoneNumber = string.IsNullOrWhiteSpace(dto.PhoneNumber) ? null : dto.PhoneNumber.Trim();
+        warehouse.Email = string.IsNullOrWhiteSpace(dto.Email) ? null : dto.Email.Trim().ToLowerInvariant();
+        warehouse.Description = string.IsNullOrWhiteSpace(dto.Description) ? null : dto.Description.Trim();
+        warehouse.Latitude = dto.Latitude;
+        warehouse.Longitude = dto.Longitude;
+        warehouse.ServiceRadiusKm = dto.ServiceRadiusKm;
+        warehouse.TotalCapacityKg = dto.TotalCapacityKg;
+        warehouse.CurrentWeight = actualWeight;
+        warehouse.UpdateAt = DateTime.UtcNow;
+        warehouse.UpdatedBy = userId;
+        await context.SaveChangesAsync();
+    }
+
+    public async Task DeleteWarehouseAsync(Guid userId, Guid warehouseId)
+    {
+        await RequireManagerAsync(userId);
+        var warehouse = await context.Warehouses
+            .FirstOrDefaultAsync(x => x.Id == warehouseId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Warehouse not found.");
+        if (await context.Warehouses.CountAsync(x => x.IsActive != false) <= 1)
+            throw new InvalidOperationException("The last active warehouse cannot be deleted.");
+
+        var hasUsers = await context.Users.AnyAsync(x => x.WarehouseId == warehouseId && x.IsActive != false);
+        var hasOperations = await context.DonationRequests.AnyAsync(x => x.WarehouseId == warehouseId && x.IsActive != false)
+            || await context.IntakeBatches.AnyAsync(x => x.WarehouseId == warehouseId && x.IsActive != false)
+            || await context.ClassifiedBatches.AnyAsync(x => x.WarehouseId == warehouseId && x.IsActive != false)
+            || await context.Inventories.AnyAsync(x => x.WarehouseId == warehouseId && x.IsActive != false)
+            || await context.Shifts.AnyAsync(x => x.WarehouseId == warehouseId && x.IsActive != false)
+            || await context.DistributionRequests.AnyAsync(x => x.WarehouseId == warehouseId && x.IsActive != false)
+            || await context.TransferRequests.AnyAsync(x => x.WarehouseId == warehouseId && x.IsActive != false);
+        if (hasUsers || hasOperations)
+            throw new InvalidOperationException(
+                "Warehouse cannot be deleted while it still has staff, requests, shifts, batches or inventory.");
+
+        var now = DateTime.UtcNow;
+        var areas = await context.WarehouseAreas.Where(x => x.WarehouseId == warehouseId && x.IsActive != false).ToListAsync();
+        var areaIds = areas.Select(x => x.Id).ToList();
+        var groups = await context.AreaGroups.Where(x => areaIds.Contains(x.AreaId) && x.IsActive != false).ToListAsync();
+        var locations = await context.StorageLocations.Where(x => x.WarehouseId == warehouseId && x.IsActive != false).ToListAsync();
+        var templates = await context.WorkScheduleTemplates.Where(x => x.WarehouseId == warehouseId && x.IsActive != false).ToListAsync();
+        foreach (var entity in areas.Cast<DAL.Models.Commons.BaseEntity>()
+                     .Concat(groups).Concat(locations).Concat(templates).Append(warehouse))
+        {
+            entity.IsActive = false;
+            entity.DeleteAt = now;
+            entity.DeletedBy = userId;
+        }
+        await context.SaveChangesAsync();
     }
 
     public async Task<WarehouseLayoutDto> GetLayoutAsync(Guid userId, Guid? requestedWarehouseId)
@@ -78,20 +180,92 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
                 WeightKg = x.Sum(i => i.TotalWeight)
             })
             .ToDictionaryAsync(x => x.LocationId);
+        var stagingBatches = await context.IntakeBatches.AsNoTracking()
+            .Include(x => x.ClassificationTeam)
+            .Include(x => x.CurrentAreaGroup)
+            .Include(x => x.CurrentStorageLocation)
+            .Include(x => x.WarehouseReceivedByStaff)
+            .Where(x => x.WarehouseId == warehouse.Id && x.CurrentAreaId.HasValue && x.IsActive != false)
+            .Select(x => new
+            {
+                x.Id, x.CurrentAreaId, x.CurrentStorageLocationId, x.BatchCode, x.Status,
+                StorageAreaId = x.CurrentStorageLocation != null
+                    ? (Guid?)x.CurrentStorageLocation.AreaId : null,
+                x.TotalWeight, x.IntakeDate,
+                DonationRequests = x.IntakeBatchDonationRequests.Count(r => r.IsActive != false),
+                TeamName = x.ClassificationTeam != null ? x.ClassificationTeam.TeamName : null,
+                LocationCode = x.CurrentStorageLocation != null
+                    ? x.CurrentStorageLocation.LocationCode : null,
+                GroupName = x.CurrentAreaGroup != null ? x.CurrentAreaGroup.GroupName : null,
+                x.WarehouseReceivedAt,
+                WarehouseReceivedBy = x.WarehouseReceivedByStaff != null
+                    ? x.WarehouseReceivedByStaff.FullName : null
+            }).ToListAsync();
 
-        var areaDtos = areas.Select(area => new WarehouseAreaLayoutDto(
-            area.Id, area.AreaName, area.Description, area.CapacityKg, area.CurrentKg,
-            groups.Where(x => x.AreaId == area.Id).Select(x => new WarehouseGroupLayoutDto(
-                x.Id, x.GroupName, x.Description, x.CapacityKg, x.CurrentKg)).ToList(),
+        var stagingPlacements = await context.IntakeBatches.AsNoTracking()
+            .Where(x => x.WarehouseId == warehouse.Id && x.CurrentStorageLocationId.HasValue
+                && x.IsActive != false)
+            .Select(x => new
+            {
+                x.CurrentAreaId,
+                x.CurrentAreaGroupId,
+                LocationId = x.CurrentStorageLocationId!.Value,
+                x.TotalWeight
+            })
+            .ToListAsync();
+        var stagingAreaStats = stagingPlacements.Where(x => x.CurrentAreaId.HasValue)
+            .GroupBy(x => x.CurrentAreaId!.Value)
+            .ToDictionary(x => x.Key, x => new { BatchCount = x.Count(), WeightKg = x.Sum(y => y.TotalWeight) });
+        var stagingGroupStats = stagingPlacements.Where(x => x.CurrentAreaGroupId.HasValue)
+            .GroupBy(x => x.CurrentAreaGroupId!.Value)
+            .ToDictionary(x => x.Key, x => new { BatchCount = x.Count(), WeightKg = x.Sum(y => y.TotalWeight) });
+        var stagingLocationStats = stagingPlacements.GroupBy(x => x.LocationId)
+            .ToDictionary(x => x.Key, x => new { BatchCount = x.Count(), WeightKg = x.Sum(y => y.TotalWeight) });
+
+        var areaDtos = areas.Select(area =>
+        {
+            var isStagingArea = !string.Equals(area.AreaType, "Storage", StringComparison.OrdinalIgnoreCase);
+            stagingAreaStats.TryGetValue(area.Id, out var areaStats);
+            return new WarehouseAreaLayoutDto(
+            area.Id, area.AreaName, area.Description, area.AreaType, area.CapacityKg,
+            isStagingArea ? areaStats?.WeightKg ?? area.CurrentKg : area.CurrentKg,
+            groups.Where(x => x.AreaId == area.Id).Select(x =>
+            {
+                stagingGroupStats.TryGetValue(x.Id, out var groupStats);
+                return new WarehouseGroupLayoutDto(x.Id, x.GroupName, x.Description, x.CapacityKg,
+                    isStagingArea ? groupStats?.WeightKg ?? x.CurrentKg : x.CurrentKg);
+            }).ToList(),
             locations.Where(x => x.AreaId == area.Id).Select(x =>
             {
                 inventoryStats.TryGetValue(x.Id, out var stats);
+                stagingLocationStats.TryGetValue(x.Id, out var stagingStats);
                 return new WarehouseLocationLayoutDto(x.Id, x.AreaGroupId, x.LocationCode, x.AisleCode, x.RackCode,
                     x.ShelfCode, x.BinCode, x.PreferredGarmentGroup, x.PreferredProcessingDirection,
-                    x.CapacityKg, stats?.WeightKg ?? 0, x.Status, stats?.Count ?? 0, stats?.Quantity ?? 0);
-            }).ToList())).ToList();
-        var actualWarehouseWeightKg = inventoryStats.Values.Sum(x => x.WeightKg);
-        var configuredWarehouseCapacityKg = areas.Sum(x => x.CapacityKg);
+                    x.CapacityKg,
+                    isStagingArea ? stagingStats?.WeightKg ?? x.CurrentWeightKg : stats?.WeightKg ?? x.CurrentWeightKg,
+                    x.Status,
+                    isStagingArea ? stagingStats?.BatchCount ?? 0 : stats?.Count ?? 0,
+                    isStagingArea ? stagingStats?.BatchCount ?? 0 : stats?.Quantity ?? 0);
+            }).ToList(),
+            // The physical location is authoritative. CurrentAreaId is retained as a
+            // fallback for legacy/staging records that have not selected a location yet.
+            stagingBatches.Where(x => (x.StorageAreaId ?? x.CurrentAreaId) == area.Id)
+                .Select(x => new WarehouseStagingBatchDto(x.Id, x.BatchCode, x.Status,
+                    x.TotalWeight, x.IntakeDate, x.DonationRequests, x.TeamName,
+                    x.CurrentStorageLocationId, x.LocationCode, x.GroupName,
+                    x.WarehouseReceivedAt, x.WarehouseReceivedBy)).ToList());
+        }).ToList();
+        // The warehouse total must represent everything physically present in its areas:
+        // intake batches in staging areas plus classified inventory in storage areas.
+        // Each area's value above already comes from its authoritative source, so summing
+        // the area DTOs keeps the headline total in sync with the visible layout.
+        var actualWarehouseWeightKg = areaDtos.Sum(x => x.CurrentWeightKg);
+        // The configured warehouse capacity is the physical ceiling. A migration repairs
+        // legacy warehouses that were bootstrapped with area totals above that ceiling.
+        var allocatedAreaCapacityKg = areaDtos.Sum(x => x.CapacityKg);
+        var configuredWarehouseCapacityKg = warehouse.TotalCapacityKg;
+        if (allocatedAreaCapacityKg > configuredWarehouseCapacityKg)
+            configuredWarehouseCapacityKg = allocatedAreaCapacityKg;
         return new WarehouseLayoutDto(warehouse.Id, warehouse.WarehouseName, warehouse.Address,
             configuredWarehouseCapacityKg, actualWarehouseWeightKg, areaDtos);
     }
@@ -108,13 +282,23 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         var inventory = await context.Inventories.AsNoTracking()
             .Where(x => x.WarehouseId == warehouseId && x.IsActive != false).ToListAsync();
         var warehouse = await context.Warehouses.AsNoTracking().FirstAsync(x => x.Id == warehouseId);
-        var capacity = warehouse.TotalCapacityKg;
-        var current = warehouse.CurrentWeight;
+        var allocatedAreaCapacity = await context.WarehouseAreas.AsNoTracking()
+            .Where(x => x.WarehouseId == warehouseId && x.IsActive != false)
+            .SumAsync(x => (decimal?)x.CapacityKg) ?? 0;
+        // Math.Max keeps old databases readable until the normalization migration is run.
+        var capacity = Math.Max(warehouse.TotalCapacityKg, allocatedAreaCapacity);
+        var stagingWeight = await context.IntakeBatches.AsNoTracking()
+            .Where(x => x.WarehouseId == warehouseId && x.IsActive != false
+                && x.CurrentStorageLocationId.HasValue
+                && x.CurrentArea != null && x.CurrentArea.AreaType != "Storage")
+            .SumAsync(x => (decimal?)x.TotalWeight) ?? 0;
+        var current = inventory.Sum(x => x.TotalWeight) + stagingWeight;
         return new WarehouseDashboardDto(pending, putaway, stored,
             inventory.Sum(x => Math.Max(0, x.Quantity - x.ReservedQuantity)),
-            inventory.Count(x => Math.Max(0, x.Quantity - x.ReservedQuantity) > 0),
+            inventory.Count(x => Math.Max(0, x.TotalWeight - x.ReservedWeight) > 0),
             inventory.Sum(x => Math.Max(0, x.TotalWeight - x.ReservedWeight)),
-            capacity <= 0 ? 0 : Math.Round(current / capacity * 100, 2));
+            capacity <= 0 ? 0 : Math.Round(current / capacity * 100, 2),
+            current, capacity);
     }
 
     public async Task<IReadOnlyList<WarehouseInboundBatchDto>> GetInboundBatchesAsync(
@@ -152,11 +336,14 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         var classifiedBatchIds = intakes.SelectMany(x => x.ClassifiedItems)
             .Where(x => x.ClassifiedBatchId.HasValue)
             .Select(x => x.ClassifiedBatchId!.Value).Distinct().ToList();
-        var inventoryByBatch = await context.Inventories.AsNoTracking()
+        var inventoryRows = await context.Inventories.AsNoTracking()
             .Include(x => x.StorageLocation)
             .Where(x => x.WarehouseId == warehouseId && x.IsActive != false
                 && x.ClassifiedBatchId.HasValue && classifiedBatchIds.Contains(x.ClassifiedBatchId.Value))
-            .ToDictionaryAsync(x => x.ClassifiedBatchId!.Value);
+            .ToListAsync();
+        var inventoriesByBatch = inventoryRows
+            .GroupBy(x => x.ClassifiedBatchId!.Value)
+            .ToDictionary(x => x.Key, x => x.ToList());
 
         return intakes.Select(intake => new WarehouseIntakeTraceDto(
             intake.Id, intake.BatchCode, intake.IntakeDate, intake.Status, intake.RouteName,
@@ -167,11 +354,19 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
                 .Select(group =>
                 {
                     var classified = group.First().ClassifiedBatch!;
-                    inventoryByBatch.TryGetValue(classified.Id, out var inventory);
+                    inventoriesByBatch.TryGetValue(classified.Id, out var inventories);
+                    var inventorySkus = inventories is null ? null : string.Join(", ", inventories
+                        .Select(x => x.Sku).Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct().OrderBy(x => x));
+                    var locationCodes = inventories is null ? null : string.Join(", ", inventories
+                        .Select(x => x.StorageLocation?.LocationCode)
+                        .Where(x => !string.IsNullOrWhiteSpace(x))
+                        .Distinct().OrderBy(x => x));
                     return new WarehouseClassifiedBatchTraceDto(classified.Id, classified.BatchCode,
                         classified.Status, classified.ClothingType, Grade(classified.ConditionRating),
                         classified.ProcessingDirection, classified.TotalItem, classified.TotalWeight,
-                        inventory?.Sku, inventory?.StorageLocation?.LocationCode,
+                        string.IsNullOrEmpty(inventorySkus) ? null : inventorySkus,
+                        string.IsNullOrEmpty(locationCodes) ? null : locationCodes,
                         classified.DonationRequestSources.Where(x => x.IsActive != false)
                             .Select(x => x.DonationRequest.RequestCode).Distinct().OrderBy(x => x).ToList());
                 }).OrderBy(x => x.BatchCode).ToList())).ToList();
@@ -181,15 +376,25 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
     {
         await RequireManagerAsync(userId);
         ValidateNameAndCapacity(dto.AreaName, dto.CapacityKg, "Area");
-        if (!await context.Warehouses.AnyAsync(x => x.Id == dto.WarehouseId && x.IsActive != false))
-            throw new InvalidOperationException("Warehouse not found.");
+        var areaType = NormalizeAreaType(dto.AreaType);
+        var warehouse = await context.Warehouses.AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id == dto.WarehouseId && x.IsActive != false)
+            ?? throw new InvalidOperationException("Warehouse not found.");
+        var allocatedAreaCapacity = await context.WarehouseAreas.AsNoTracking()
+            .Where(x => x.WarehouseId == dto.WarehouseId && x.IsActive != false)
+            .SumAsync(x => (decimal?)x.CapacityKg) ?? 0;
+        if (allocatedAreaCapacity + dto.CapacityKg > warehouse.TotalCapacityKg)
+            throw new InvalidOperationException(
+                $"Area capacity exceeds the warehouse limit. Remaining capacity: "
+                + $"{Math.Max(0, warehouse.TotalCapacityKg - allocatedAreaCapacity)} kg.");
         if (await context.WarehouseAreas.AnyAsync(x => x.WarehouseId == dto.WarehouseId
                 && x.IsActive != false && x.AreaName == dto.AreaName.Trim()))
             throw new InvalidOperationException("An active area with this name already exists in the warehouse.");
         var area = new WarehouseArea
         {
             Id = Guid.NewGuid(), WarehouseId = dto.WarehouseId, AreaName = dto.AreaName.Trim(),
-            Description = dto.Description?.Trim(), CapacityKg = dto.CapacityKg, CurrentKg = 0,
+            AreaType = areaType, Description = dto.Description?.Trim(),
+            CapacityKg = dto.CapacityKg, CurrentKg = 0,
             CreateAt = DateTime.UtcNow, CreatedBy = userId, IsActive = true
         };
         context.WarehouseAreas.Add(area);
@@ -201,14 +406,40 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
     {
         await RequireManagerAsync(userId);
         ValidateNameAndCapacity(dto.AreaName, dto.CapacityKg, "Area");
+        var areaType = NormalizeAreaType(dto.AreaType);
         var area = await context.WarehouseAreas.FirstOrDefaultAsync(x => x.Id == areaId && x.IsActive != false)
             ?? throw new InvalidOperationException("Warehouse area not found.");
         if (area.WarehouseId != dto.WarehouseId)
             throw new InvalidOperationException("An area cannot be moved to another warehouse.");
+        var warehouseCapacity = await context.Warehouses.AsNoTracking()
+            .Where(x => x.Id == area.WarehouseId)
+            .Select(x => x.TotalCapacityKg)
+            .SingleAsync();
+        var currentAreaCapacity = await context.WarehouseAreas.AsNoTracking()
+            .Where(x => x.WarehouseId == area.WarehouseId && x.IsActive != false)
+            .SumAsync(x => (decimal?)x.CapacityKg) ?? 0;
+        var otherAreaCapacity = currentAreaCapacity - area.CapacityKg;
+        if (otherAreaCapacity + dto.CapacityKg > warehouseCapacity)
+            throw new InvalidOperationException(
+                $"Total area capacity cannot exceed the warehouse capacity of "
+                + $"{warehouseCapacity} kg.");
         var allocatedCapacity = await context.AreaGroups
             .Where(x => x.AreaId == areaId && x.IsActive != false).SumAsync(x => (decimal?)x.CapacityKg) ?? 0;
-        if (dto.CapacityKg < area.CurrentKg)
-            throw new InvalidOperationException($"Area capacity cannot be lower than its current {area.CurrentKg} kg stock.");
+        var inventoryWeight = await context.Inventories.AsNoTracking()
+            .Where(x => x.IsActive != false && x.StorageLocation != null
+                && x.StorageLocation.AreaId == areaId)
+            .SumAsync(x => (decimal?)x.TotalWeight) ?? 0;
+        var intakeBatchWeight = await context.IntakeBatches.AsNoTracking()
+            .Where(x => x.IsActive != false && x.CurrentAreaId == areaId)
+            .SumAsync(x => (decimal?)x.TotalWeight) ?? 0;
+        var actualAreaWeight = inventoryWeight + intakeBatchWeight;
+        if (!string.Equals(area.AreaType, areaType, StringComparison.OrdinalIgnoreCase)
+            && Math.Max(area.CurrentKg, actualAreaWeight) > 0)
+            throw new InvalidOperationException(
+                "Area purpose cannot be changed while inventory or intake batches remain in the area.");
+        if (dto.CapacityKg < actualAreaWeight)
+            throw new InvalidOperationException(
+                $"Area capacity cannot be lower than its current {actualAreaWeight} kg stock.");
         if (dto.CapacityKg < allocatedCapacity)
             throw new InvalidOperationException(
                 $"Area capacity cannot be lower than {allocatedCapacity} kg already allocated to active rows.");
@@ -216,11 +447,25 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
                 && x.IsActive != false && x.AreaName == dto.AreaName.Trim()))
             throw new InvalidOperationException("An active area with this name already exists in the warehouse.");
         area.AreaName = dto.AreaName.Trim();
+        area.AreaType = areaType;
         area.Description = dto.Description?.Trim();
         area.CapacityKg = dto.CapacityKg;
         area.UpdateAt = DateTime.UtcNow;
         area.UpdatedBy = userId;
         await context.SaveChangesAsync();
+    }
+
+    private static string NormalizeAreaType(string? areaType)
+    {
+        return areaType?.Trim().ToLowerInvariant() switch
+        {
+            "receiving" => "Receiving",
+            "unclassified" => "Unclassified",
+            "classified" => "Classified",
+            "storage" => "Storage",
+            _ => throw new InvalidOperationException(
+                "Area purpose must be Receiving, Unclassified, Classified or Storage.")
+        };
     }
 
     public async Task DeleteAreaAsync(Guid userId, Guid areaId)
@@ -230,7 +475,10 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             ?? throw new InvalidOperationException("Warehouse area not found.");
         var hasStock = area.CurrentKg > 0 || await context.Inventories.AnyAsync(x => x.IsActive != false
             && (x.StorageLocation != null && x.StorageLocation.AreaId == areaId));
-        if (hasStock) throw new InvalidOperationException("Move or issue all inventory from this area before deleting it.");
+        var hasIntakeBatches = await context.IntakeBatches.AnyAsync(x =>
+            x.IsActive != false && x.CurrentAreaId == areaId);
+        if (hasStock || hasIntakeBatches)
+            throw new InvalidOperationException("Move all inventory and intake batches from this area before deleting it.");
         var now = DateTime.UtcNow;
         var groups = await context.AreaGroups.Where(x => x.AreaId == areaId && x.IsActive != false).ToListAsync();
         var locations = await context.StorageLocations.Where(x => x.AreaId == areaId && x.IsActive != false).ToListAsync();
@@ -274,8 +522,23 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             ?? throw new InvalidOperationException("Warehouse row not found.");
         if (group.AreaId != dto.AreaId)
             throw new InvalidOperationException("A row cannot be moved to another area.");
-        if (dto.CapacityKg < group.CurrentKg)
-            throw new InvalidOperationException($"Row capacity cannot be lower than its current {group.CurrentKg} kg stock.");
+        var inventoryWeight = await context.Inventories.AsNoTracking()
+            .Where(x => x.AreaGroupId == group.Id && x.IsActive != false)
+            .SumAsync(x => (decimal?)x.TotalWeight) ?? 0;
+        var intakeBatchWeight = await context.IntakeBatches.AsNoTracking()
+            .Where(x => x.CurrentAreaGroupId == group.Id && x.IsActive != false)
+            .SumAsync(x => (decimal?)x.TotalWeight) ?? 0;
+        var actualGroupWeight = inventoryWeight + intakeBatchWeight;
+        if (dto.CapacityKg < actualGroupWeight)
+            throw new InvalidOperationException(
+                $"Row capacity cannot be lower than its current {actualGroupWeight} kg stock.");
+        var allocatedLocationCapacity = await context.StorageLocations.AsNoTracking()
+            .Where(x => x.AreaGroupId == group.Id && x.IsActive != false)
+            .SumAsync(x => (decimal?)x.CapacityKg) ?? 0;
+        if (dto.CapacityKg < allocatedLocationCapacity)
+            throw new InvalidOperationException(
+                $"Row capacity cannot be lower than {allocatedLocationCapacity} kg "
+                + "already allocated to active locations.");
         var otherCapacity = await context.AreaGroups.Where(x => x.AreaId == group.AreaId
                 && x.Id != group.Id && x.IsActive != false).SumAsync(x => (decimal?)x.CapacityKg) ?? 0;
         if (otherCapacity + dto.CapacityKg > group.Area.CapacityKg)
@@ -299,7 +562,10 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             ?? throw new InvalidOperationException("Warehouse row not found.");
         var hasStock = group.CurrentKg > 0 || await context.Inventories.AnyAsync(x =>
             x.AreaGroupId == groupId && x.IsActive != false && x.Quantity > 0);
-        if (hasStock) throw new InvalidOperationException("Move or issue all inventory from this row before deleting it.");
+        var hasIntakeBatches = await context.IntakeBatches.AnyAsync(x =>
+            x.IsActive != false && x.CurrentAreaGroupId == groupId);
+        if (hasStock || hasIntakeBatches)
+            throw new InvalidOperationException("Move all inventory and intake batches from this row before deleting it.");
         var now = DateTime.UtcNow;
         var locations = await context.StorageLocations
             .Where(x => x.AreaGroupId == groupId && x.IsActive != false).ToListAsync();
@@ -347,9 +613,16 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             ?? throw new InvalidOperationException("Storage location not found.");
         if (location.AreaGroupId != dto.AreaGroupId)
             throw new InvalidOperationException("A location cannot be moved to another warehouse row.");
-        if (dto.CapacityKg < location.CurrentWeightKg)
+        var inventoryWeight = await context.Inventories.AsNoTracking()
+            .Where(x => x.StorageLocationId == location.Id && x.IsActive != false)
+            .SumAsync(x => (decimal?)x.TotalWeight) ?? 0;
+        var intakeBatchWeight = await context.IntakeBatches.AsNoTracking()
+            .Where(x => x.CurrentStorageLocationId == location.Id && x.IsActive != false)
+            .SumAsync(x => (decimal?)x.TotalWeight) ?? 0;
+        var actualLocationWeight = inventoryWeight + intakeBatchWeight;
+        if (dto.CapacityKg < actualLocationWeight)
             throw new InvalidOperationException(
-                $"Location capacity cannot be lower than its current {location.CurrentWeightKg} kg stock.");
+                $"Location capacity cannot be lower than its current {actualLocationWeight} kg stock.");
         await ValidateLocationCapacityAsync(location.AreaGroup!, location.Id, dto.CapacityKg);
         if (await context.StorageLocations.AnyAsync(x => x.Id != locationId
                 && x.WarehouseId == location.WarehouseId && x.IsActive != false
@@ -375,9 +648,12 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         var location = await context.StorageLocations
             .FirstOrDefaultAsync(x => x.Id == locationId && x.IsActive != false)
             ?? throw new InvalidOperationException("Storage location not found.");
-        if (location.CurrentWeightKg > 0 || await context.Inventories.AnyAsync(x =>
-                x.StorageLocationId == locationId && x.IsActive != false && x.Quantity > 0))
-            throw new InvalidOperationException("Move or issue all inventory from this location before deleting it.");
+        var hasInventory = location.CurrentWeightKg > 0 || await context.Inventories.AnyAsync(x =>
+            x.StorageLocationId == locationId && x.IsActive != false && x.TotalWeight > 0);
+        var hasIntakeBatches = await context.IntakeBatches.AnyAsync(x =>
+            x.IsActive != false && x.CurrentStorageLocationId == locationId);
+        if (hasInventory || hasIntakeBatches)
+            throw new InvalidOperationException("Move all inventory and intake batches from this location before deleting it.");
         location.IsActive = false;
         location.DeleteAt = DateTime.UtcNow;
         location.DeletedBy = userId;
@@ -386,8 +662,8 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
 
     public async Task ConfirmReceiptAsync(Guid staffId, Guid batchId, ConfirmWarehouseReceiptDto dto)
     {
-        if (dto.ActualItemCount <= 0 || dto.ActualWeightKg <= 0)
-            throw new InvalidOperationException("Actual item count and weight must be greater than zero.");
+        if (dto.ActualWeightKg <= 0)
+            throw new InvalidOperationException("Actual weight must be greater than zero.");
         if (!dto.SealIntact && string.IsNullOrWhiteSpace(dto.DiscrepancyNotes))
             throw new InvalidOperationException("A discrepancy note is required when the seal is not intact.");
 
@@ -397,17 +673,23 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             ?? throw new InvalidOperationException("Classified batch not found.");
         if (batch.Status != "PendingWarehouseReceipt")
             throw new InvalidOperationException("Only a batch pending warehouse receipt can be confirmed.");
+        var handedOffWeight = decimal.Round(batch.TotalWeight, 2, MidpointRounding.AwayFromZero);
+        var receivedWeight = decimal.Round(dto.ActualWeightKg, 2, MidpointRounding.AwayFromZero);
+        if (receivedWeight != handedOffWeight)
+            throw new InvalidOperationException(
+                $"Khối lượng thực nhận phải đúng bằng {handedOffWeight:0.##} kg do Classification Staff bàn giao.");
 
         var expectedCount = batch.Items.Count(x => x.IsActive != false);
-        var notes = BuildReceiptNotes(expectedCount, dto);
+        var actualItemCount = dto.ActualItemCount > 0 ? dto.ActualItemCount : expectedCount;
+        var notes = BuildReceiptNotes(expectedCount, dto with { ActualItemCount = actualItemCount });
         batch.Status = "WarehouseReceived";
         batch.WarehouseReceivedAt = DateTime.UtcNow;
         batch.WarehouseReceivedByStaffId = staffId;
-        batch.ReceivedItemCount = dto.ActualItemCount;
-        batch.ReceivedWeight = dto.ActualWeightKg;
+        batch.ReceivedItemCount = actualItemCount;
+        batch.ReceivedWeight = receivedWeight;
         batch.WarehouseReceiptNotes = notes;
-        batch.TotalItem = dto.ActualItemCount;
-        batch.TotalWeight = dto.ActualWeightKg;
+        batch.TotalItem = actualItemCount;
+        batch.TotalWeight = receivedWeight;
         batch.UpdateAt = DateTime.UtcNow;
         batch.UpdatedBy = staffId;
 
@@ -422,13 +704,13 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             GarmentGroup = batch.GarmentGroup, ClothingType = batch.ClothingType,
             Gender = batch.Gender, TargetUser = batch.TargetUser, Size = batch.Size,
             ProcessingDirection = batch.ProcessingDirection, ConditionRating = batch.ConditionRating,
-            Quantity = dto.ActualItemCount, TotalWeight = dto.ActualWeightKg,
+            Quantity = actualItemCount, TotalWeight = receivedWeight,
             Status = "AwaitingPutaway", CreateAt = DateTime.UtcNow, CreatedBy = staffId
         };
         context.Inventories.Add(inventory);
         AddTransaction(staffId, batch.WarehouseId, "RECEIPT", "ClassifiedBatch", batch.Id,
-            notes, inventory, dto.ActualItemCount, dto.ActualWeightKg, 0, dto.ActualItemCount,
-            0, dto.ActualWeightKg, null, null);
+            notes, inventory, actualItemCount, receivedWeight, 0, actualItemCount,
+            0, receivedWeight, null, null);
         var sourceIds = await context.ClassifiedBatchDonationRequests.Where(x => x.ClassifiedBatchId == batch.Id)
             .Select(x => x.DonationRequestId).ToListAsync();
         var actor = await NotificationWriter.ActorNameAsync(context, staffId);
@@ -592,24 +874,22 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
 
     public async Task IssueAsync(Guid staffId, Guid inventoryId, IssueInventoryDto dto)
     {
-        if (dto.Quantity <= 0 || dto.WeightKg <= 0 || string.IsNullOrWhiteSpace(dto.Reason))
-            throw new InvalidOperationException("Quantity, weight and issue reason are required.");
+        if (dto.WeightKg <= 0 || string.IsNullOrWhiteSpace(dto.Reason))
+            throw new InvalidOperationException("Weight and issue reason are required.");
         await using var transaction = await context.Database.BeginTransactionAsync();
         var inventory = await InventoryForMutation(inventoryId);
         if (inventory.Status != "Available") throw new InvalidOperationException("Inventory is not available for issue.");
-        if (inventory.Quantity - inventory.ReservedQuantity < dto.Quantity
-            || inventory.TotalWeight - inventory.ReservedWeight < dto.WeightKg)
+        if (inventory.TotalWeight - inventory.ReservedWeight < dto.WeightKg)
             throw new InvalidOperationException("Requested issue exceeds available inventory.");
         var beforeQuantity = inventory.Quantity;
         var beforeWeight = inventory.TotalWeight;
-        inventory.Quantity -= dto.Quantity;
-        inventory.TotalWeight -= dto.WeightKg;
-        inventory.Status = inventory.Quantity == 0 ? "Depleted" : "Available";
+        inventory.TotalWeight = Math.Max(0, inventory.TotalWeight - dto.WeightKg);
+        inventory.Status = inventory.TotalWeight <= 0 ? "Depleted" : "Available";
         inventory.UpdateAt = DateTime.UtcNow;
         inventory.UpdatedBy = staffId;
         AdjustLocationWeight(inventory, -dto.WeightKg);
         AddTransaction(staffId, inventory.WarehouseId, "OUT", dto.ReferenceType, dto.ReferenceId,
-            $"{dto.Reason}. {dto.Notes}".Trim(), inventory, dto.Quantity, dto.WeightKg,
+            $"{dto.Reason}. {dto.Notes}".Trim(), inventory, 0, dto.WeightKg,
             beforeQuantity, inventory.Quantity, beforeWeight, inventory.TotalWeight,
             inventory.StorageLocationId, null);
         var sourceIds = await context.ClassifiedBatchDonationRequests
@@ -761,10 +1041,96 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
 
     private async Task EnsureDefaultLayoutAsync(Guid warehouseId)
     {
-        if (await context.StorageLocations.AnyAsync(x => x.WarehouseId == warehouseId && x.IsActive != false)) return;
         var warehouseCapacity = await context.Warehouses.Where(x => x.Id == warehouseId)
             .Select(x => x.TotalCapacityKg).SingleAsync();
-        var areaCapacity = warehouseCapacity / 3m;
+        // Six default areas share the physical warehouse capacity: three staging areas
+        // and three classified-storage areas. Never assign the full warehouse capacity
+        // to every staging area, otherwise the hierarchy is overallocated at creation.
+        var defaultAreaCapacity = warehouseCapacity / 6m;
+        var stagingDefinitions = new[]
+        {
+            ("Receiving", "Khu nhận đồ", "Khu tiếp nhận Intake Batch do Receiving Staff đưa về."),
+            ("Unclassified", "Khu chưa phân loại", "Khu Intake Batch chờ Classification Staff xử lý."),
+            ("Classified", "Khu đã phân loại", "Khu Intake Batch đã hoàn tất phân loại.")
+        };
+        foreach (var (type, name, description) in stagingDefinitions)
+        {
+            var area = await context.WarehouseAreas.Include(x => x.Groups)
+                .FirstOrDefaultAsync(x => x.WarehouseId == warehouseId
+                    && x.AreaType == type && x.IsActive != false);
+            if (area is null)
+            {
+                // Respect an intentional soft delete. This bootstrap runs on every layout load,
+                // so checking active rows only would resurrect a manager-deleted area.
+                var existsInHistory = await context.WarehouseAreas.AnyAsync(x =>
+                    x.WarehouseId == warehouseId && x.AreaType == type);
+                if (existsInHistory) continue;
+
+                area = new WarehouseArea
+                {
+                    Id = Guid.NewGuid(), WarehouseId = warehouseId, AreaType = type,
+                    AreaName = name, Description = description, CapacityKg = defaultAreaCapacity,
+                    CurrentKg = 0, CreateAt = VietnamTime.Now, IsActive = true
+                };
+                context.WarehouseAreas.Add(area);
+            }
+            var prefix = type switch
+            {
+                "Receiving" => "RECEIVING",
+                "Unclassified" => "UNCLASSIFIED",
+                _ => "CLASSIFIED"
+            };
+            for (var index = 1; index <= 2; index++)
+                // Include inactive rows so a deleted default row stays deleted after reload.
+                if (!area.Groups.Any(x => x.GroupName == $"Dãy {prefix}-{index:00}"))
+                    context.AreaGroups.Add(new AreaGroup
+                    {
+                        Id = Guid.NewGuid(), AreaId = area.Id,
+                        GroupName = $"Dãy {prefix}-{index:00}",
+                        Description = $"Dãy trung chuyển {name.ToLowerInvariant()} số {index:00}",
+                        CapacityKg = defaultAreaCapacity / 2m, CurrentKg = 0,
+                        CreateAt = VietnamTime.Now, IsActive = true
+                    });
+        }
+
+        await context.SaveChangesAsync();
+
+        var stagingGroups = await context.AreaGroups
+            .Include(x => x.Area)
+            .Include(x => x.StorageLocations)
+            .Where(x => x.Area.WarehouseId == warehouseId
+                && x.Area.AreaType == "Receiving"
+                && x.IsActive != false)
+            .ToListAsync();
+        foreach (var group in stagingGroups)
+        {
+            for (var shelf = 1; shelf <= 3; shelf++)
+            {
+                var shelfCode = $"S{shelf:00}";
+                // Include inactive locations for the same reason as default rows above.
+                if (group.StorageLocations.Any(x => x.ShelfCode == shelfCode))
+                    continue;
+                context.StorageLocations.Add(new StorageLocation
+                {
+                    Id = Guid.NewGuid(), WarehouseId = warehouseId, AreaId = group.AreaId,
+                    AreaGroupId = group.Id,
+                    LocationCode = $"RECEIVING-{group.Id:N}"[..18].ToUpperInvariant()
+                        + $"-R01-{shelfCode}-B01",
+                    AisleCode = "A01", RackCode = "R01", ShelfCode = shelfCode, BinCode = "B01",
+                    PreferredProcessingDirection = "ReceivingStaging",
+                    CapacityKg = group.CapacityKg / 3m, CurrentWeightKg = 0,
+                    Status = "Available", CreateAt = VietnamTime.Now, IsActive = true
+                });
+            }
+        }
+        await context.SaveChangesAsync();
+
+        if (await context.StorageLocations.AnyAsync(x => x.WarehouseId == warehouseId
+            && x.Area.AreaType == "Storage" && x.IsActive != false))
+        {
+            return;
+        }
+        var areaCapacity = defaultAreaCapacity;
         var locationCapacity = areaCapacity / 6m;
         var definitions = new[]
         {
@@ -777,6 +1143,7 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
             var area = new WarehouseArea
             {
                 Id = Guid.NewGuid(), WarehouseId = warehouseId, AreaName = areaName,
+                AreaType = "Storage",
                 Description = $"Khu vực kiểm soát cho hướng xử lý {direction}", CapacityKg = areaCapacity,
                 CurrentKg = 0, CreateAt = DateTime.UtcNow, IsActive = true
             };
@@ -827,13 +1194,53 @@ public class WarehouseOperationsService(AppDbContext context) : IWarehouseOperat
         x.Items.OrderBy(i => i.ItemCode).Select(i =>
             new ClassificationItemDto(i.Id, i.ItemCode, i.FabricType, i.GarmentGroup,
                 i.ClothingType, i.Gender, i.TargetUser, i.Size, Grade(i.ConditionRating),
-                i.ProcessingDirection, i.ImageUrls ?? [], i.Notes, i.ClassifiedAt)).ToList());
+                i.ProcessingDirection, i.ImageUrls ?? [], i.Notes, i.ClassifiedAt,
+                i.FabricTypeId, i.GarmentGroupId, i.ClothingTypeId, i.GenderId,
+                i.TargetUserId, i.SizeId, [])).ToList());
 
     private static string BuildReceiptNotes(int expectedCount, ConfirmWarehouseReceiptDto dto)
     {
         var variance = dto.ActualItemCount - expectedCount;
         var seal = dto.SealIntact ? "Seal intact" : "Seal discrepancy";
         return $"{seal}; item variance: {variance:+#;-#;0}. {dto.DiscrepancyNotes}".Trim();
+    }
+
+    private static void ValidateWarehouse(CreateWarehouseDto dto)
+    {
+        var name = dto.WarehouseName?.Trim() ?? string.Empty;
+        var address = dto.Address?.Trim() ?? string.Empty;
+        if (name.Length is < 3 or > 150)
+            throw new InvalidOperationException("Warehouse name must contain 3-150 characters.");
+        if (address.Length is < 10 or > 500)
+            throw new InvalidOperationException("Warehouse address must contain 10-500 characters.");
+        if (dto.TotalCapacityKg <= 0 || dto.TotalCapacityKg > 10_000_000)
+            throw new InvalidOperationException("Warehouse capacity must be between 1 and 10,000,000 kg.");
+        if (!string.IsNullOrWhiteSpace(dto.Email)
+            && !System.Net.Mail.MailAddress.TryCreate(dto.Email.Trim(), out _))
+            throw new InvalidOperationException("Warehouse email format is invalid.");
+        if (dto.ServiceRadiusKm is < 1 or > 200)
+            throw new InvalidOperationException("Warehouse service radius must be between 1 and 200 km.");
+        ValidateCoordinates(dto);
+    }
+
+    private static void ValidateCoordinates(CreateWarehouseDto dto)
+    {
+        if (dto.Latitude.HasValue != dto.Longitude.HasValue)
+            throw new InvalidOperationException("Warehouse latitude and longitude must be provided together.");
+        if (dto.Latitude is < -90 or > 90 || dto.Longitude is < -180 or > 180)
+            throw new InvalidOperationException("Warehouse coordinates are invalid.");
+    }
+
+    private async Task<decimal> GetWarehouseActualWeightAsync(Guid warehouseId)
+    {
+        var inventoryWeight = await context.Inventories.AsNoTracking()
+            .Where(x => x.WarehouseId == warehouseId && x.IsActive != false)
+            .SumAsync(x => (decimal?)x.TotalWeight) ?? 0;
+        var stagingWeight = await context.IntakeBatches.AsNoTracking()
+            .Where(x => x.WarehouseId == warehouseId && x.IsActive != false
+                && x.CurrentStorageLocationId.HasValue)
+            .SumAsync(x => (decimal?)x.TotalWeight) ?? 0;
+        return inventoryWeight + stagingWeight;
     }
 
     private static string Grade(int rating) => rating == 1 ? "A" : rating == 2 ? "B" : "C";

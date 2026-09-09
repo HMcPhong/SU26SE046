@@ -1,13 +1,20 @@
 namespace BLL.DTOs;
 
 public record WarehouseDashboardDto(int PendingReceipt, int AwaitingPutaway, int StoredBatches,
-    int AvailableQuantity, int InventorySkuCount, decimal AvailableWeightKg, decimal CapacityUsedPercent);
+    int AvailableQuantity, int InventorySkuCount, decimal AvailableWeightKg, decimal CapacityUsedPercent,
+    decimal CurrentWeightKg, decimal CapacityKg);
 
 public record WarehouseLayoutDto(Guid WarehouseId, string WarehouseName, string Address,
     decimal CapacityKg, decimal CurrentWeightKg, IReadOnlyList<WarehouseAreaLayoutDto> Areas);
 public record WarehouseAreaLayoutDto(Guid Id, string AreaName, string? Description,
-    decimal CapacityKg, decimal CurrentWeightKg, IReadOnlyList<WarehouseGroupLayoutDto> Groups,
-    IReadOnlyList<WarehouseLocationLayoutDto> Locations);
+    string AreaType, decimal CapacityKg, decimal CurrentWeightKg,
+    IReadOnlyList<WarehouseGroupLayoutDto> Groups,
+    IReadOnlyList<WarehouseLocationLayoutDto> Locations,
+    IReadOnlyList<WarehouseStagingBatchDto> IntakeBatches);
+public record WarehouseStagingBatchDto(Guid Id, string BatchCode, string Status,
+    decimal TotalWeight, DateTime IntakeDate, int DonationRequests, string? TeamName,
+    Guid? StorageLocationId, string? LocationCode, string? GroupName,
+    DateTime? WarehouseReceivedAt, string? WarehouseReceivedBy);
 public record WarehouseGroupLayoutDto(Guid Id, string GroupName, string? Description,
     decimal CapacityKg, decimal CurrentWeightKg);
 public record WarehouseLocationLayoutDto(Guid Id, Guid? AreaGroupId, string LocationCode, string AisleCode,
@@ -31,7 +38,7 @@ public record StorageLocationDto(Guid Id, string LocationCode, string AreaName, 
     decimal AvailableCapacityKg, string Status, int MatchScore);
 
 public record PutawayBatchDto(Guid LocationId, string? Notes);
-public record IssueInventoryDto(int Quantity, decimal WeightKg, string Reason,
+public record IssueInventoryDto(decimal WeightKg, string Reason,
     string? ReferenceType, Guid? ReferenceId, string? Notes);
 public record MoveInventoryDto(Guid DestinationLocationId, string Reason, string? Notes);
 
@@ -60,9 +67,13 @@ public record WarehouseClassifiedBatchTraceDto(Guid Id, string BatchCode, string
     IReadOnlyList<string> DonationRequestCodes);
 
 public record SaveWarehouseAreaDto(Guid WarehouseId, string AreaName, string? Description,
-    decimal CapacityKg);
+    decimal CapacityKg, string AreaType = "Storage");
 public record CreateWarehouseDto(string WarehouseName, string Address, string? PhoneNumber,
-    string? Email, string? Description, decimal TotalCapacityKg);
+    string? Email, string? Description, decimal TotalCapacityKg, double? Latitude, double? Longitude,
+    double ServiceRadiusKm = 24);
+public record WarehouseDetailsDto(Guid Id, string WarehouseName, string Address, string? PhoneNumber,
+    string? Email, string? Description, decimal TotalCapacityKg, decimal CurrentWeightKg,
+    decimal AllocatedAreaCapacityKg, double? Latitude, double? Longitude, double ServiceRadiusKm);
 public record SaveWarehouseGroupDto(Guid AreaId, string GroupName, string? Description,
     decimal CapacityKg);
 public record SaveStorageLocationDto(Guid AreaGroupId, string LocationCode, string AisleCode,

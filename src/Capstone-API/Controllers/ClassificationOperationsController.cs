@@ -3,26 +3,38 @@ using BLL.DTOs;
 using BLL.Services.Interfaces.ClassificationOperations;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Capstone_API.Services;
 
 namespace Capstone_API.Controllers;
 
 [ApiController]
 [Route("api/classification-operations")]
 [Authorize(Roles = "ClassificationStaff")]
-public class ClassificationOperationsController(IClassificationOperationsService service) : ControllerBase
+public class ClassificationOperationsController(IClassificationOperationsService service,
+    GeminiClassificationService aiService) : ControllerBase
 {
     [HttpGet("batches")]
-    public async Task<IActionResult> GetBatches() => Ok(await service.GetBatchesAsync());
+    public async Task<IActionResult> GetBatches() => Ok(await service.GetBatchesAsync(CurrentUserId));
 
     [HttpGet("batches/{batchId:guid}")]
     public async Task<IActionResult> GetBatch(Guid batchId)
     {
-        var batch = await service.GetBatchAsync(batchId);
+        var batch = await service.GetBatchAsync(CurrentUserId, batchId);
         return batch is null ? NotFound() : Ok(batch);
     }
 
     [HttpGet("catalog")]
     public async Task<IActionResult> GetCatalog() => Ok(await service.GetCatalogAsync());
+
+    [HttpGet("classified-area-layout")]
+    public async Task<IActionResult> GetClassifiedAreaLayout([FromQuery] DateTime? date) =>
+        Ok(await service.GetClassificationAreaLayoutAsync(CurrentUserId, date));
+
+    [HttpPost("analyze-images")]
+    [RequestSizeLimit(50_000_000)]
+    public async Task<IActionResult> AnalyzeImages(AnalyzeClassificationImagesDto dto,
+        CancellationToken cancellationToken) =>
+        Ok(await aiService.AnalyzeAsync(await service.GetCatalogAsync(), dto, cancellationToken));
 
     [HttpPost("batches/{batchId:guid}/start")]
     public async Task<IActionResult> Start(Guid batchId)
@@ -32,29 +44,76 @@ public class ClassificationOperationsController(IClassificationOperationsService
     public async Task<IActionResult> ConfirmReceipt(Guid batchId)
     { await service.ConfirmReceiptAsync(CurrentUserId, batchId); return NoContent(); }
 
+    [HttpPut("batches/{batchId:guid}/count")]
+    public async Task<IActionResult> CountBatch(Guid batchId, CountClassificationBatchDto dto)
+    { await service.CountBatchAsync(CurrentUserId, batchId, dto); return NoContent(); }
+
     [HttpPost("batches/{batchId:guid}/items")]
     public async Task<IActionResult> ClassifyItem(Guid batchId, ClassifyItemDto dto) =>
         Ok(await service.ClassifyItemAsync(CurrentUserId, batchId, dto));
+
+    [HttpPut("batches/{batchId:guid}/items/{itemId:guid}")]
+    public async Task<IActionResult> UpdateItem(Guid batchId, Guid itemId, ClassifyItemDto dto) =>
+        Ok(await service.UpdateItemAsync(CurrentUserId, batchId, itemId, dto));
+
+    [HttpDelete("batches/{batchId:guid}/items/{itemId:guid}")]
+    public async Task<IActionResult> DeleteItem(Guid batchId, Guid itemId)
+    { await service.DeleteItemAsync(CurrentUserId, batchId, itemId); return NoContent(); }
 
     [HttpPost("batches/{batchId:guid}/complete")]
     public async Task<IActionResult> Complete(Guid batchId)
     { await service.CompleteBatchAsync(CurrentUserId, batchId); return NoContent(); }
 
+    [HttpPost("teams/{teamId:guid}/start")]
+    public async Task<IActionResult> StartTeam(Guid teamId)
+    { await service.StartTeamAsync(CurrentUserId, teamId); return NoContent(); }
+
+    [HttpPost("teams/{teamId:guid}/complete")]
+    public async Task<IActionResult> CompleteTeam(Guid teamId)
+    { await service.CompleteTeamAsync(CurrentUserId, teamId); return NoContent(); }
+
     [HttpGet("grouped-batches")]
     public async Task<IActionResult> GetGroupedBatches([FromQuery] DateTime? date) =>
-        Ok(await service.GetGroupedBatchesAsync(date));
+        Ok(await service.GetGroupedBatchesAsync(CurrentUserId, date));
 
     [HttpGet("grouped-batches/{groupedBatchId:guid}")]
     public async Task<IActionResult> GetGroupedBatch(Guid groupedBatchId)
     {
-        var batch = await service.GetGroupedBatchAsync(groupedBatchId);
+        var batch = await service.GetGroupedBatchAsync(CurrentUserId, groupedBatchId);
         return batch is null ? NotFound() : Ok(batch);
     }
+
+    [HttpGet("unassigned-items")]
+    public async Task<IActionResult> GetUnassignedItems() =>
+        Ok(await service.GetUnassignedItemsAsync(CurrentUserId));
+
+    [HttpPost("grouped-batches/manual")]
+    public async Task<IActionResult> CreateManualBatch(CreateManualClassifiedBatchDto dto) =>
+        Ok(await service.CreateManualBatchAsync(CurrentUserId, dto));
+
+    [HttpPost("grouped-batches/{groupedBatchId:guid}/items")]
+    public async Task<IActionResult> AssignItems(Guid groupedBatchId, AssignItemsToClassifiedBatchDto dto)
+    { await service.AssignItemsAsync(CurrentUserId, groupedBatchId, dto.ItemIds); return NoContent(); }
+
+    [HttpDelete("grouped-batches/{groupedBatchId:guid}/items/{itemId:guid}")]
+    public async Task<IActionResult> RemoveItem(Guid groupedBatchId, Guid itemId)
+    { await service.RemoveItemAsync(CurrentUserId, groupedBatchId, itemId); return NoContent(); }
+
+    [HttpPost("grouped-batches/{groupedBatchId:guid}/finalize")]
+    public async Task<IActionResult> FinalizeManualBatch(Guid groupedBatchId)
+    { await service.FinalizeManualBatchAsync(CurrentUserId, groupedBatchId); return NoContent(); }
 
     [HttpPost("grouped-batches/{groupedBatchId:guid}/send-to-warehouse")]
     public async Task<IActionResult> SendGroupedBatchToWarehouse(Guid groupedBatchId)
     {
         await service.SendGroupedBatchToWarehouseAsync(CurrentUserId, groupedBatchId);
+        return NoContent();
+    }
+
+    [HttpPost("grouped-batches/{groupedBatchId:guid}/place")]
+    public async Task<IActionResult> PlaceGroupedBatch(Guid groupedBatchId, PlaceGroupedClassifiedBatchDto dto)
+    {
+        await service.PlaceGroupedBatchAsync(CurrentUserId, groupedBatchId, dto);
         return NoContent();
     }
 

@@ -7,11 +7,24 @@ namespace BLL.Services.Interfaces.DonorRequestService
         Task<Guid> CreateAsync(Guid donorId, CreateDonorRequestDto dto);
 
         Task UpdateAsync(Guid donorId, Guid requestId, UpdateDonorRequestDto dto);
+        Task UpdateShippingInfoAsync(Guid donorId, Guid requestId, UpdateShippingInfoDto dto);
 
         Task CancelAsync(Guid donorId, Guid requestId);
 
         Task<List<DonorRequestSearchResultDto>> SearchByPhoneNumberAsync(string phoneNumber);
 
         Task<List<DonorRequestSearchResultDto>> GetByDonorIdAsync(Guid donorId);
+
+        Task<DonorPickupAvailabilityDto> GetPickupAvailabilityAsync(
+            DateTime date,
+            double? latitude,
+            double? longitude,
+            Guid? warehouseId);
+
+        Task<List<DateTime>> GetPickupDatesAsync(
+            DateTime month,
+            double? latitude,
+            double? longitude,
+            Guid? warehouseId);
     }
 }

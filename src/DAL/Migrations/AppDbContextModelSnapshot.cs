@@ -22,6 +22,56 @@ namespace DAL.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("DAL.Models.AiPromptConfiguration", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Feature")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PromptText")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Feature")
+                        .IsUnique();
+
+                    b.ToTable("AiPromptConfigurations");
+                });
+
             modelBuilder.Entity("DAL.Models.AreaGroup", b =>
                 {
                     b.Property<Guid>("Id")
@@ -153,6 +203,9 @@ namespace DAL.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ClassificationAreaName")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<DateTime>("ClassificationDate")
                         .HasColumnType("datetime2");
 
@@ -213,9 +266,18 @@ namespace DAL.Migrations
                     b.Property<bool?>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<DateTime?>("PlacedInClassificationAreaAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("PlacedInClassificationAreaByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<string>("ProcessingDirection")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("ProcessingOperationOutputId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<int?>("ReceivedItemCount")
                         .HasColumnType("int");
@@ -223,6 +285,12 @@ namespace DAL.Migrations
                     b.Property<decimal?>("ReceivedWeight")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("RemovedFromClassificationAreaAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("RemovedFromClassificationAreaByStaffId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("SentToWarehouseAt")
                         .HasColumnType("datetime2");
@@ -240,6 +308,9 @@ namespace DAL.Migrations
                     b.Property<string>("Status")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("StorageLocationId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("StoredAt")
                         .HasColumnType("datetime2");
@@ -288,7 +359,15 @@ namespace DAL.Migrations
                     b.HasIndex("GroupKey")
                         .IsUnique();
 
+                    b.HasIndex("PlacedInClassificationAreaByStaffId");
+
+                    b.HasIndex("ProcessingOperationOutputId");
+
+                    b.HasIndex("RemovedFromClassificationAreaByStaffId");
+
                     b.HasIndex("SentToWarehouseByStaffId");
+
+                    b.HasIndex("StorageLocationId");
 
                     b.HasIndex("StoredByStaffId");
 
@@ -548,6 +627,56 @@ namespace DAL.Migrations
                     b.ToTable("ConditionQuestions");
                 });
 
+            modelBuilder.Entity("DAL.Models.DirectChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("RecipientId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("SenderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("RecipientId");
+
+                    b.HasIndex("SenderId", "RecipientId", "SentAt");
+
+                    b.ToTable("DirectChatMessages");
+                });
+
             modelBuilder.Entity("DAL.Models.DistributionItem", b =>
                 {
                     b.Property<Guid>("Id")
@@ -743,6 +872,156 @@ namespace DAL.Migrations
                     b.ToTable("DistributionRequests");
                 });
 
+            modelBuilder.Entity("DAL.Models.DonationChatMessage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("DonationRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("nvarchar(2000)");
+
+                    b.Property<Guid>("SenderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("SentAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SenderId");
+
+                    b.HasIndex("DonationRequestId", "SentAt");
+
+                    b.ToTable("DonationChatMessages");
+                });
+
+            modelBuilder.Entity("DAL.Models.DonationPointRule", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("PointsPerKg")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("DonationPointRules");
+                });
+
+            modelBuilder.Entity("DAL.Models.DonationPointTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("BalanceAfter")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Description")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid?>("DonationRequestId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime>("OccurredAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("Points")
+                        .HasColumnType("int");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("WeightKg")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("DonationRequestId", "Type")
+                        .IsUnique()
+                        .HasFilter("[DonationRequestId] IS NOT NULL");
+
+                    b.ToTable("DonationPointTransactions");
+                });
+
             modelBuilder.Entity("DAL.Models.DonationRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -752,6 +1031,9 @@ namespace DAL.Migrations
                     b.Property<decimal?>("ActualWeight")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("CarrierName")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ContactName")
                         .IsRequired()
@@ -783,6 +1065,9 @@ namespace DAL.Migrations
                     b.Property<Guid>("DonorId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<string>("DropOffMethod")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<decimal>("EstimateWeight")
                         .HasPrecision(18, 2)
                         .HasColumnType("decimal(18,2)");
@@ -810,6 +1095,9 @@ namespace DAL.Migrations
 
                     b.Property<string>("Status")
                         .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("TrackingCode")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("UpdateAt")
@@ -894,19 +1182,74 @@ namespace DAL.Migrations
                     b.PrimitiveCollection<string>("BatchImages")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("ClassificationAreaName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ClassificationAssignedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ClassificationAssignedByManagerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ClassificationCompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ClassificationCompletedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("ClassificationReceivedAt")
                         .HasColumnType("datetime2");
 
                     b.Property<Guid?>("ClassificationReceivedByStaffId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("ClassificationStartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ClassificationStartedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ClassificationTeamId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ClassifiedAreaPlacedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ClassifiedAreaPlacedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("CompletedAt")
                         .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("CountedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CountedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int?>("CountedItemCount")
+                        .HasColumnType("int");
+
+                    b.Property<decimal?>("CountedTotalWeight")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("CountingNotes")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<DateTime?>("CreateAt")
                         .HasColumnType("datetime2");
 
                     b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CurrentAreaGroupId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CurrentAreaId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CurrentStorageLocationId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTime?>("DeleteAt")
@@ -957,13 +1300,39 @@ namespace DAL.Migrations
                     b.Property<Guid>("WarehouseId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("WarehouseReceivedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("WarehouseReceivedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.HasKey("Id");
 
+                    b.HasIndex("ClassificationAssignedByManagerId");
+
+                    b.HasIndex("ClassificationCompletedByStaffId");
+
                     b.HasIndex("ClassificationReceivedByStaffId");
+
+                    b.HasIndex("ClassificationStartedByStaffId");
+
+                    b.HasIndex("ClassificationTeamId");
+
+                    b.HasIndex("ClassifiedAreaPlacedByStaffId");
+
+                    b.HasIndex("CountedByStaffId");
+
+                    b.HasIndex("CurrentAreaGroupId");
+
+                    b.HasIndex("CurrentAreaId");
+
+                    b.HasIndex("CurrentStorageLocationId");
 
                     b.HasIndex("ReceivingTeamId");
 
                     b.HasIndex("WarehouseId");
+
+                    b.HasIndex("WarehouseReceivedByStaffId");
 
                     b.HasIndex("ShiftId", "ReceivingTeamId")
                         .IsUnique()
@@ -1286,6 +1655,12 @@ namespace DAL.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("CompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CompletedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<DateTime?>("CreateAt")
                         .HasColumnType("datetime2");
 
@@ -1303,6 +1678,16 @@ namespace DAL.Migrations
 
                     b.Property<Guid>("ShiftId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("StartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("StartedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("TeamName")
                         .IsRequired()
@@ -1392,6 +1777,271 @@ namespace DAL.Migrations
                     b.HasIndex("TeamId");
 
                     b.ToTable("PickupAssignments");
+                });
+
+            modelBuilder.Entity("DAL.Models.ProcessingOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("ApprovedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("ApprovedByManagerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ApprovedByOrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("CarrierName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("CompletionNotes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("CreatedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("IssuedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("IssuedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("ManagerRejectionReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("ManagerRespondedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OperationCode")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
+                    b.Property<string>("OperationType")
+                        .IsRequired()
+                        .HasMaxLength(30)
+                        .HasColumnType("nvarchar(30)");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("OrganizationReceivedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("OrganizationRejectionReason")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("OrganizationRespondedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("OutputReturnedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ProcessingCompletedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("ProcessingStartedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("RejectedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("RejectedByManagerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RequestNotes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("RequestedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<string>("TrackingCode")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("WarehouseId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ApprovedByManagerId");
+
+                    b.HasIndex("ApprovedByOrganizationId");
+
+                    b.HasIndex("CreatedByUserId");
+
+                    b.HasIndex("IssuedByStaffId");
+
+                    b.HasIndex("OperationCode")
+                        .IsUnique();
+
+                    b.HasIndex("OrganizationId");
+
+                    b.HasIndex("RejectedByManagerId");
+
+                    b.HasIndex("WarehouseId");
+
+                    b.ToTable("ProcessingOperations");
+                });
+
+            modelBuilder.Entity("DAL.Models.ProcessingOperationInput", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid?>("ClassifiedBatchId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("InventoryId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("IssuedQuantity")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("IssuedWeight")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<Guid>("ProcessingOperationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("RequestedQuantity")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("RequestedWeight")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ClassifiedBatchId");
+
+                    b.HasIndex("InventoryId");
+
+                    b.HasIndex("ProcessingOperationId", "InventoryId")
+                        .IsUnique();
+
+                    b.ToTable("ProcessingOperationInputs");
+                });
+
+            modelBuilder.Entity("DAL.Models.ProcessingOperationOutput", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("CreateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("DeleteAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("DeletedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool?>("IsActive")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("Notes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("OutputType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("nvarchar(40)");
+
+                    b.Property<Guid>("ProcessingOperationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Quantity")
+                        .HasColumnType("int");
+
+                    b.Property<DateTime?>("RecordedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("RecordedByStaffId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("ReturnedQuantity")
+                        .HasColumnType("int");
+
+                    b.Property<decimal>("ReturnedWeight")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<DateTime?>("UpdateAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal>("Weight")
+                        .HasPrecision(18, 2)
+                        .HasColumnType("decimal(18,2)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ProcessingOperationId");
+
+                    b.HasIndex("RecordedByStaffId");
+
+                    b.ToTable("ProcessingOperationOutputs");
                 });
 
             modelBuilder.Entity("DAL.Models.Role", b =>
@@ -2065,6 +2715,11 @@ namespace DAL.Migrations
                     b.Property<bool?>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<string>("Purpose")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("nvarchar(32)");
+
                     b.Property<DateTime?>("UpdateAt")
                         .HasColumnType("datetime2");
 
@@ -2308,8 +2963,17 @@ namespace DAL.Migrations
                     b.Property<bool?>("IsActive")
                         .HasColumnType("bit");
 
+                    b.Property<double?>("Latitude")
+                        .HasColumnType("float");
+
+                    b.Property<double?>("Longitude")
+                        .HasColumnType("float");
+
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<double>("ServiceRadiusKm")
+                        .HasColumnType("float");
 
                     b.Property<decimal>("TotalCapacityKg")
                         .HasPrecision(18, 2)
@@ -2337,6 +3001,10 @@ namespace DAL.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<string>("AreaName")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AreaType")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
@@ -2462,9 +3130,29 @@ namespace DAL.Migrations
                         .HasForeignKey("GroupId")
                         .OnDelete(DeleteBehavior.Restrict);
 
+                    b.HasOne("DAL.Models.User", "PlacedInClassificationAreaByStaff")
+                        .WithMany()
+                        .HasForeignKey("PlacedInClassificationAreaByStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.ProcessingOperationOutput", "ProcessingOperationOutput")
+                        .WithMany("ClassifiedBatches")
+                        .HasForeignKey("ProcessingOperationOutputId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.User", "RemovedFromClassificationAreaByStaff")
+                        .WithMany()
+                        .HasForeignKey("RemovedFromClassificationAreaByStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("DAL.Models.User", "SentToWarehouseByStaff")
                         .WithMany()
                         .HasForeignKey("SentToWarehouseByStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.StorageLocation", "StorageLocation")
+                        .WithMany()
+                        .HasForeignKey("StorageLocationId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("DAL.Models.User", "StoredByStaff")
@@ -2487,7 +3175,15 @@ namespace DAL.Migrations
 
                     b.Navigation("Group");
 
+                    b.Navigation("PlacedInClassificationAreaByStaff");
+
+                    b.Navigation("ProcessingOperationOutput");
+
+                    b.Navigation("RemovedFromClassificationAreaByStaff");
+
                     b.Navigation("SentToWarehouseByStaff");
+
+                    b.Navigation("StorageLocation");
 
                     b.Navigation("StoredByStaff");
 
@@ -2560,6 +3256,25 @@ namespace DAL.Migrations
                     b.Navigation("ConditionQuestion");
                 });
 
+            modelBuilder.Entity("DAL.Models.DirectChatMessage", b =>
+                {
+                    b.HasOne("DAL.Models.User", "Recipient")
+                        .WithMany()
+                        .HasForeignKey("RecipientId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DAL.Models.User", "Sender")
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Recipient");
+
+                    b.Navigation("Sender");
+                });
+
             modelBuilder.Entity("DAL.Models.DistributionItem", b =>
                 {
                     b.HasOne("DAL.Models.DistributionRequest", "DistributionRequest")
@@ -2612,6 +3327,43 @@ namespace DAL.Migrations
                     b.Navigation("WarehouseIssuedByStaff");
                 });
 
+            modelBuilder.Entity("DAL.Models.DonationChatMessage", b =>
+                {
+                    b.HasOne("DAL.Models.DonationRequest", "DonationRequest")
+                        .WithMany()
+                        .HasForeignKey("DonationRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DAL.Models.User", "Sender")
+                        .WithMany()
+                        .HasForeignKey("SenderId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DonationRequest");
+
+                    b.Navigation("Sender");
+                });
+
+            modelBuilder.Entity("DAL.Models.DonationPointTransaction", b =>
+                {
+                    b.HasOne("DAL.Models.DonationRequest", "DonationRequest")
+                        .WithMany()
+                        .HasForeignKey("DonationRequestId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("DonationRequest");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("DAL.Models.DonationRequest", b =>
                 {
                     b.HasOne("DAL.Models.User", "Donor")
@@ -2660,9 +3412,54 @@ namespace DAL.Migrations
 
             modelBuilder.Entity("DAL.Models.IntakeBatch", b =>
                 {
+                    b.HasOne("DAL.Models.User", "ClassificationAssignedByManager")
+                        .WithMany()
+                        .HasForeignKey("ClassificationAssignedByManagerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.User", "ClassificationCompletedByStaff")
+                        .WithMany()
+                        .HasForeignKey("ClassificationCompletedByStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
                     b.HasOne("DAL.Models.User", "ClassificationReceivedByStaff")
                         .WithMany()
                         .HasForeignKey("ClassificationReceivedByStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.User", "ClassificationStartedByStaff")
+                        .WithMany()
+                        .HasForeignKey("ClassificationStartedByStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.OperationalTeam", "ClassificationTeam")
+                        .WithMany("ClassificationBatches")
+                        .HasForeignKey("ClassificationTeamId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.User", "ClassifiedAreaPlacedByStaff")
+                        .WithMany()
+                        .HasForeignKey("ClassifiedAreaPlacedByStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.User", "CountedByStaff")
+                        .WithMany()
+                        .HasForeignKey("CountedByStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.AreaGroup", "CurrentAreaGroup")
+                        .WithMany()
+                        .HasForeignKey("CurrentAreaGroupId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.WarehouseArea", "CurrentArea")
+                        .WithMany("IntakeBatches")
+                        .HasForeignKey("CurrentAreaId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.StorageLocation", "CurrentStorageLocation")
+                        .WithMany()
+                        .HasForeignKey("CurrentStorageLocationId")
                         .OnDelete(DeleteBehavior.Restrict);
 
                     b.HasOne("DAL.Models.OperationalTeam", "ReceivingTeam")
@@ -2682,13 +3479,38 @@ namespace DAL.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.HasOne("DAL.Models.User", "WarehouseReceivedByStaff")
+                        .WithMany()
+                        .HasForeignKey("WarehouseReceivedByStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ClassificationAssignedByManager");
+
+                    b.Navigation("ClassificationCompletedByStaff");
+
                     b.Navigation("ClassificationReceivedByStaff");
+
+                    b.Navigation("ClassificationStartedByStaff");
+
+                    b.Navigation("ClassificationTeam");
+
+                    b.Navigation("ClassifiedAreaPlacedByStaff");
+
+                    b.Navigation("CountedByStaff");
+
+                    b.Navigation("CurrentArea");
+
+                    b.Navigation("CurrentAreaGroup");
+
+                    b.Navigation("CurrentStorageLocation");
 
                     b.Navigation("ReceivingTeam");
 
                     b.Navigation("Shift");
 
                     b.Navigation("Warehouse");
+
+                    b.Navigation("WarehouseReceivedByStaff");
                 });
 
             modelBuilder.Entity("DAL.Models.IntakeBatchDonationRequest", b =>
@@ -2833,6 +3655,104 @@ namespace DAL.Migrations
                     b.Navigation("Team");
                 });
 
+            modelBuilder.Entity("DAL.Models.ProcessingOperation", b =>
+                {
+                    b.HasOne("DAL.Models.User", "ApprovedByManager")
+                        .WithMany()
+                        .HasForeignKey("ApprovedByManagerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.User", "ApprovedByOrganization")
+                        .WithMany()
+                        .HasForeignKey("ApprovedByOrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.User", "CreatedByUser")
+                        .WithMany()
+                        .HasForeignKey("CreatedByUserId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.User", "IssuedByStaff")
+                        .WithMany()
+                        .HasForeignKey("IssuedByStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.User", "Organization")
+                        .WithMany()
+                        .HasForeignKey("OrganizationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DAL.Models.User", "RejectedByManager")
+                        .WithMany()
+                        .HasForeignKey("RejectedByManagerId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.Warehouse", "Warehouse")
+                        .WithMany()
+                        .HasForeignKey("WarehouseId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ApprovedByManager");
+
+                    b.Navigation("ApprovedByOrganization");
+
+                    b.Navigation("CreatedByUser");
+
+                    b.Navigation("IssuedByStaff");
+
+                    b.Navigation("Organization");
+
+                    b.Navigation("RejectedByManager");
+
+                    b.Navigation("Warehouse");
+                });
+
+            modelBuilder.Entity("DAL.Models.ProcessingOperationInput", b =>
+                {
+                    b.HasOne("DAL.Models.ClassifiedBatch", "ClassifiedBatch")
+                        .WithMany()
+                        .HasForeignKey("ClassifiedBatchId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.HasOne("DAL.Models.Inventory", "Inventory")
+                        .WithMany()
+                        .HasForeignKey("InventoryId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DAL.Models.ProcessingOperation", "ProcessingOperation")
+                        .WithMany("Inputs")
+                        .HasForeignKey("ProcessingOperationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ClassifiedBatch");
+
+                    b.Navigation("Inventory");
+
+                    b.Navigation("ProcessingOperation");
+                });
+
+            modelBuilder.Entity("DAL.Models.ProcessingOperationOutput", b =>
+                {
+                    b.HasOne("DAL.Models.ProcessingOperation", "ProcessingOperation")
+                        .WithMany("Outputs")
+                        .HasForeignKey("ProcessingOperationId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("DAL.Models.User", "RecordedByStaff")
+                        .WithMany()
+                        .HasForeignKey("RecordedByStaffId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("ProcessingOperation");
+
+                    b.Navigation("RecordedByStaff");
+                });
+
             modelBuilder.Entity("DAL.Models.Shift", b =>
                 {
                     b.HasOne("DAL.Models.Warehouse", "Warehouse")
@@ -2858,7 +3778,7 @@ namespace DAL.Migrations
             modelBuilder.Entity("DAL.Models.StorageLocation", b =>
                 {
                     b.HasOne("DAL.Models.AreaGroup", "AreaGroup")
-                        .WithMany()
+                        .WithMany("StorageLocations")
                         .HasForeignKey("AreaGroupId")
                         .OnDelete(DeleteBehavior.Restrict);
 
@@ -3114,6 +4034,8 @@ namespace DAL.Migrations
             modelBuilder.Entity("DAL.Models.AreaGroup", b =>
                 {
                     b.Navigation("Inventories");
+
+                    b.Navigation("StorageLocations");
                 });
 
             modelBuilder.Entity("DAL.Models.ClassifiedBatch", b =>
@@ -3181,9 +4103,23 @@ namespace DAL.Migrations
 
             modelBuilder.Entity("DAL.Models.OperationalTeam", b =>
                 {
+                    b.Navigation("ClassificationBatches");
+
                     b.Navigation("IntakeBatches");
 
                     b.Navigation("Members");
+                });
+
+            modelBuilder.Entity("DAL.Models.ProcessingOperation", b =>
+                {
+                    b.Navigation("Inputs");
+
+                    b.Navigation("Outputs");
+                });
+
+            modelBuilder.Entity("DAL.Models.ProcessingOperationOutput", b =>
+                {
+                    b.Navigation("ClassifiedBatches");
                 });
 
             modelBuilder.Entity("DAL.Models.Role", b =>
@@ -3253,6 +4189,8 @@ namespace DAL.Migrations
             modelBuilder.Entity("DAL.Models.WarehouseArea", b =>
                 {
                     b.Navigation("Groups");
+
+                    b.Navigation("IntakeBatches");
                 });
 #pragma warning restore 612, 618
         }

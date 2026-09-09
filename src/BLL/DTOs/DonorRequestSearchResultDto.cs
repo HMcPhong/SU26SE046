@@ -11,6 +11,9 @@ namespace BLL.DTOs
         public string PhoneNumber { get; set; } = string.Empty;
 
         public string DeliveryMethod { get; set; } = string.Empty;
+        public string? DropOffMethod { get; set; }
+        public string? CarrierName { get; set; }
+        public string? TrackingCode { get; set; }
 
         public string? Description { get; set; }
 
@@ -33,5 +36,13 @@ namespace BLL.DTOs
         public string StatusText { get; set; } = string.Empty;
 
         public DateTime? CreatedAt { get; set; }
+
+        public string? ReceivingTeamName { get; set; }
+
+        public DateTime? EstimatedPickupAt { get; set; }
+
+        public List<AssignedReceivingStaffDto> ReceivingStaff { get; set; } = [];
     }
+
+    public record AssignedReceivingStaffDto(Guid Id, string FullName, string PhoneNumber);
 }

@@ -17,6 +17,9 @@ namespace DAL
         public DbSet<InspectionAnswer> InspectionAnswers => Set<InspectionAnswer>();
         public DbSet<DistributionRequest> DistributionRequests => Set<DistributionRequest>();
         public DbSet<DistributionItem> DistributionItems => Set<DistributionItem>();
+        public DbSet<ProcessingOperation> ProcessingOperations => Set<ProcessingOperation>();
+        public DbSet<ProcessingOperationInput> ProcessingOperationInputs => Set<ProcessingOperationInput>();
+        public DbSet<ProcessingOperationOutput> ProcessingOperationOutputs => Set<ProcessingOperationOutput>();
         public DbSet<ShipmentStatusHistory> ShipmentStatusHistories => Set<ShipmentStatusHistory>();
         public DbSet<DonationRequest> DonationRequests => Set<DonationRequest>();
         public DbSet<IntakeBatch> IntakeBatches => Set<IntakeBatch>();
@@ -28,6 +31,9 @@ namespace DAL
         public DbSet<Voucher> Vouchers => Set<Voucher>();
         public DbSet<VoucherCode> VoucherCodes => Set<VoucherCode>();
         public DbSet<VoucherRedemption> VoucherRedemptions => Set<VoucherRedemption>();
+        public DbSet<DonationPointTransaction> DonationPointTransactions => Set<DonationPointTransaction>();
+        public DbSet<DonationPointRule> DonationPointRules => Set<DonationPointRule>();
+        public DbSet<AiPromptConfiguration> AiPromptConfigurations => Set<AiPromptConfiguration>();
         public DbSet<Warehouse> Warehouses => Set<Warehouse>();
         public DbSet<WarehouseArea> WarehouseAreas => Set<WarehouseArea>();
         public DbSet<AreaGroup> AreaGroups => Set<AreaGroup>();
@@ -39,10 +45,61 @@ namespace DAL
         public DbSet<TransferRequest> TransferRequests => Set<TransferRequest>();
         public DbSet<TransferItem> TransferItems => Set<TransferItem>();
         public DbSet<Notification> Notifications => Set<Notification>();
+        public DbSet<DonationChatMessage> DonationChatMessages => Set<DonationChatMessage>();
+        public DbSet<DirectChatMessage> DirectChatMessages => Set<DirectChatMessage>();
 
         public AppDbContext(DbContextOptions<AppDbContext> options)
             : base(options)
         {
+        }
+
+        public override int SaveChanges(bool acceptAllChangesOnSuccess)
+        {
+            NormalizeSystemTimestampsToVietnamTime();
+            return base.SaveChanges(acceptAllChangesOnSuccess);
+        }
+
+        public override Task<int> SaveChangesAsync(
+            bool acceptAllChangesOnSuccess,
+            CancellationToken cancellationToken = default)
+        {
+            NormalizeSystemTimestampsToVietnamTime();
+            return base.SaveChangesAsync(acceptAllChangesOnSuccess, cancellationToken);
+        }
+
+        private void NormalizeSystemTimestampsToVietnamTime()
+        {
+            var vietnamZone = ResolveVietnamTimeZone();
+            foreach (var entry in ChangeTracker.Entries()
+                         .Where(x => x.State is EntityState.Added or EntityState.Modified))
+            {
+                foreach (var property in entry.Properties.Where(x =>
+                             entry.State == EntityState.Added || x.IsModified))
+                {
+                    if (property.CurrentValue is DateTime value && value.Kind == DateTimeKind.Utc)
+                    {
+                        var local = TimeZoneInfo.ConvertTimeFromUtc(value, vietnamZone);
+                        property.CurrentValue = DateTime.SpecifyKind(local, DateTimeKind.Unspecified);
+                    }
+                    else if (property.CurrentValue is DateTimeOffset offset
+                             && offset.Offset == TimeSpan.Zero)
+                    {
+                        property.CurrentValue = TimeZoneInfo.ConvertTime(offset, vietnamZone);
+                    }
+                }
+            }
+        }
+
+        private static TimeZoneInfo ResolveVietnamTimeZone()
+        {
+            foreach (var id in new[] { "Asia/Ho_Chi_Minh", "SE Asia Standard Time" })
+            {
+                try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
+                catch (TimeZoneNotFoundException) { }
+                catch (InvalidTimeZoneException) { }
+            }
+
+            throw new TimeZoneNotFoundException("Vietnam time zone could not be resolved.");
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -50,6 +107,14 @@ namespace DAL
             base.OnModelCreating(modelBuilder);
 
             modelBuilder.Entity<User>().HasOne(u => u.Role).WithMany(r => r.Users).HasForeignKey(u => u.RoleId);
+            modelBuilder.Entity<AiPromptConfiguration>().HasIndex(x => x.Feature).IsUnique();
+            modelBuilder.Entity<DonationPointTransaction>()
+                .HasIndex(x => new { x.DonationRequestId, x.Type }).IsUnique()
+                .HasFilter("[DonationRequestId] IS NOT NULL");
+            modelBuilder.Entity<DonationPointTransaction>().HasOne(x => x.User).WithMany()
+                .HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DonationPointTransaction>().HasOne(x => x.DonationRequest).WithMany()
+                .HasForeignKey(x => x.DonationRequestId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<WorkScheduleTemplate>()
                 .HasIndex(x => new { x.WarehouseId, x.Year })
                 .IsUnique();
@@ -62,6 +127,7 @@ namespace DAL
             modelBuilder.Entity<User>().HasIndex(x => x.PhoneNumber);
             modelBuilder.Entity<UserVerificationCode>()
                 .HasIndex(x => new { x.UserId, x.IsActive });
+            modelBuilder.Entity<UserVerificationCode>().Property(x => x.Purpose).HasMaxLength(32);
             modelBuilder.Entity<UserVerificationCode>()
                 .HasOne(x => x.User)
                 .WithMany(x => x.VerificationCodes)
@@ -165,6 +231,23 @@ namespace DAL
                 .HasOne(x => x.DonationRequest).WithMany(x => x.Notifications)
                 .HasForeignKey(x => x.DonationRequestId).OnDelete(DeleteBehavior.SetNull);
 
+            modelBuilder.Entity<DonationChatMessage>().Property(x => x.Message).HasMaxLength(2000);
+            modelBuilder.Entity<DonationChatMessage>()
+                .HasIndex(x => new { x.DonationRequestId, x.SentAt });
+            modelBuilder.Entity<DonationChatMessage>()
+                .HasOne(x => x.DonationRequest).WithMany()
+                .HasForeignKey(x => x.DonationRequestId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DonationChatMessage>()
+                .HasOne(x => x.Sender).WithMany()
+                .HasForeignKey(x => x.SenderId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<DirectChatMessage>().Property(x => x.Message).HasMaxLength(2000);
+            modelBuilder.Entity<DirectChatMessage>().HasIndex(x => new { x.SenderId, x.RecipientId, x.SentAt });
+            modelBuilder.Entity<DirectChatMessage>().HasOne(x => x.Sender).WithMany()
+                .HasForeignKey(x => x.SenderId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<DirectChatMessage>().HasOne(x => x.Recipient).WithMany()
+                .HasForeignKey(x => x.RecipientId).OnDelete(DeleteBehavior.Restrict);
+
             modelBuilder.Entity<DistributionItem>()
                 .HasOne(x => x.Inventory).WithMany()
                 .HasForeignKey(x => x.InventoryId).OnDelete(DeleteBehavior.Restrict);
@@ -183,6 +266,40 @@ namespace DAL
             modelBuilder.Entity<ShipmentStatusHistory>()
                 .HasOne(x => x.DistributionRequest).WithMany(x => x.ShipmentHistory)
                 .HasForeignKey(x => x.DistributionRequestId).OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<ProcessingOperation>().Property(x => x.OperationCode).HasMaxLength(32);
+            modelBuilder.Entity<ProcessingOperation>().HasIndex(x => x.OperationCode).IsUnique();
+            modelBuilder.Entity<ProcessingOperation>().Property(x => x.OperationType).HasMaxLength(30);
+            modelBuilder.Entity<ProcessingOperation>().Property(x => x.Status).HasMaxLength(40);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.Organization).WithMany().HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.ApprovedByOrganization).WithMany().HasForeignKey(x => x.ApprovedByOrganizationId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.ApprovedByManager).WithMany().HasForeignKey(x => x.ApprovedByManagerId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.IssuedByStaff).WithMany().HasForeignKey(x => x.IssuedByStaffId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.ApprovedByManager).WithMany().HasForeignKey(x => x.ApprovedByManagerId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.IssuedByStaff).WithMany().HasForeignKey(x => x.IssuedByStaffId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ProcessingOperationInput>()
+                .HasIndex(x => new
+                {
+                    x.ProcessingOperationId,
+                    x.InventoryId
+                })
+                .IsUnique();
+            modelBuilder.Entity<ProcessingOperationInput>().HasOne(x => x.ProcessingOperation).WithMany(x => x.Inputs)
+                .HasForeignKey(x => x.ProcessingOperationId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperationInput>().HasOne(x => x.Inventory).WithMany().HasForeignKey(x => x.InventoryId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperationInput>().HasOne(x => x.ClassifiedBatch).WithMany().HasForeignKey(x => x.ClassifiedBatchId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ProcessingOperationOutput>().Property(x => x.OutputType).HasMaxLength(40);
+            modelBuilder.Entity<ProcessingOperationOutput>().HasOne(x => x.ProcessingOperation).WithMany(x => x.Outputs)
+                .HasForeignKey(x => x.ProcessingOperationId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperationOutput>().HasOne(x => x.RecordedByStaff).WithMany()
+                .HasForeignKey(x => x.RecordedByStaffId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ClassifiedBatch>().HasOne(x => x.ProcessingOperationOutput).WithMany(x => x.ClassifiedBatches)
+                .HasForeignKey(x => x.ProcessingOperationOutputId).OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<DonationRequest>()
                 .HasOne(x => x.Donor)
@@ -217,10 +334,48 @@ namespace DAL
                 .OnDelete(DeleteBehavior.SetNull);
 
             modelBuilder.Entity<IntakeBatch>()
+                .HasOne(x => x.ClassificationTeam)
+                .WithMany(x => x.ClassificationBatches)
+                .HasForeignKey(x => x.ClassificationTeamId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<IntakeBatch>()
+                .HasOne(x => x.CurrentArea)
+                .WithMany(x => x.IntakeBatches)
+                .HasForeignKey(x => x.CurrentAreaId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<IntakeBatch>()
+                .HasOne(x => x.CurrentAreaGroup)
+                .WithMany()
+                .HasForeignKey(x => x.CurrentAreaGroupId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<IntakeBatch>()
+                .HasOne(x => x.CurrentStorageLocation)
+                .WithMany()
+                .HasForeignKey(x => x.CurrentStorageLocationId)
+                .OnDelete(DeleteBehavior.SetNull);
+
+            modelBuilder.Entity<IntakeBatch>().HasOne(x => x.WarehouseReceivedByStaff).WithMany()
+                .HasForeignKey(x => x.WarehouseReceivedByStaffId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<IntakeBatch>().HasOne(x => x.ClassificationAssignedByManager).WithMany()
+                .HasForeignKey(x => x.ClassificationAssignedByManagerId).OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<IntakeBatch>()
                 .HasOne(x => x.ClassificationReceivedByStaff)
                 .WithMany()
                 .HasForeignKey(x => x.ClassificationReceivedByStaffId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<IntakeBatch>().HasOne(x => x.CountedByStaff).WithMany()
+                .HasForeignKey(x => x.CountedByStaffId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<IntakeBatch>().HasOne(x => x.ClassificationStartedByStaff).WithMany()
+                .HasForeignKey(x => x.ClassificationStartedByStaffId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<IntakeBatch>().HasOne(x => x.ClassificationCompletedByStaff).WithMany()
+                .HasForeignKey(x => x.ClassificationCompletedByStaffId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<IntakeBatch>().HasOne(x => x.ClassifiedAreaPlacedByStaff).WithMany()
+                .HasForeignKey(x => x.ClassifiedAreaPlacedByStaffId).OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<TeamMember>()
                 .HasIndex(x => new { x.TeamId, x.StaffId })
@@ -241,6 +396,17 @@ namespace DAL
                 .WithMany()
                 .HasForeignKey(x => x.GroupId)
                 .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ClassifiedBatch>()
+                .HasOne(x => x.StorageLocation)
+                .WithMany()
+                .HasForeignKey(x => x.StorageLocationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            modelBuilder.Entity<ClassifiedBatch>().HasOne(x => x.PlacedInClassificationAreaByStaff).WithMany()
+                .HasForeignKey(x => x.PlacedInClassificationAreaByStaffId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ClassifiedBatch>().HasOne(x => x.RemovedFromClassificationAreaByStaff).WithMany()
+                .HasForeignKey(x => x.RemovedFromClassificationAreaByStaffId).OnDelete(DeleteBehavior.Restrict);
 
             modelBuilder.Entity<ClassifiedBatch>()
                 .Property(x => x.GroupKey)
@@ -472,6 +638,7 @@ namespace DAL
             public static readonly Guid ReceivingStaffId = Guid.Parse("55555555-5555-5555-5555-555555555555");
             public static readonly Guid ClassificationStaffId = Guid.Parse("66666666-6666-6666-6666-666666666666");
             public static readonly Guid WarehouseStaffId = Guid.Parse("77777777-7777-7777-7777-777777777777");
+            public static readonly Guid DisposalOrganizationId = Guid.Parse("88888888-8888-8888-8888-888888888888");
             public static readonly Guid System = Guid.Parse("00000000-0000-0000-0000-000000000000");
         }
     }
