@@ -273,7 +273,10 @@ namespace DAL
             modelBuilder.Entity<ProcessingOperation>().Property(x => x.Status).HasMaxLength(40);
             modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.Warehouse).WithMany().HasForeignKey(x => x.WarehouseId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.Organization).WithMany().HasForeignKey(x => x.OrganizationId).OnDelete(DeleteBehavior.Restrict);
-            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.RequestedByStaff).WithMany().HasForeignKey(x => x.RequestedByStaffId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.CreatedByUser).WithMany().HasForeignKey(x => x.CreatedByUserId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.ApprovedByOrganization).WithMany().HasForeignKey(x => x.ApprovedByOrganizationId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.ApprovedByManager).WithMany().HasForeignKey(x => x.ApprovedByManagerId).OnDelete(DeleteBehavior.Restrict);
+            modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.IssuedByStaff).WithMany().HasForeignKey(x => x.IssuedByStaffId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.ApprovedByManager).WithMany().HasForeignKey(x => x.ApprovedByManagerId).OnDelete(DeleteBehavior.Restrict);
             modelBuilder.Entity<ProcessingOperation>().HasOne(x => x.IssuedByStaff).WithMany().HasForeignKey(x => x.IssuedByStaffId).OnDelete(DeleteBehavior.Restrict);
 
